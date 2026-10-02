@@ -49,11 +49,14 @@ frontend/
     ├── App.tsx
     ├── components/
     │   ├── layout/
+    │   ├── authorization/
+    │   │   └── Can.tsx
     │   └── ProtectedRoute.tsx
     ├── context/
     │   ├── AuthContext.tsx
     │   └── useAuth.ts
     ├── hooks/
+    │   └── useAuthorization.ts
     ├── pages/
     │   ├── Login/
     │   └── <modulo>/
@@ -63,6 +66,7 @@ frontend/
     │   ├── authService.ts
     │   └── realtime/                    # opcional
     ├── types/
+    │   └── authorization.ts
     ├── constants/
     ├── theme/
     └── utils/
@@ -77,9 +81,10 @@ Las pantallas y funcionalidades pueden agruparse por módulo cuando eso facilite
 - `components/`: componentes UI/layout reutilizables; mantenerlos pequeños y sin reglas de acceso de negocio.
 - `pages/`: pantallas por módulo o funcionalidad.
 - `context/AuthContext.tsx`: estado en memoria, identidad, carga inicial y operaciones de autenticación.
+- `hooks/useAuthorization.ts` y `components/authorization/Can.tsx`: consultan permisos efectivos para rutas, menús y componentes sin duplicar reglas.
 - `services/apiClient.ts`: configura Axios, base URL, Bearer token, CSRF y errores HTTP comunes.
 - `services/authService.ts`: contrato de login, refresh, logout, CSRF y consulta de identidad.
-- `ProtectedRoute.tsx`: evita navegación visual a pantallas privadas; no es una barrera de seguridad de API.
+- `ProtectedRoute.tsx`: controla navegación por autenticación/roles/permisos como UX; no es una barrera de seguridad de API.
 - `types/`, `constants/`, `hooks/` y `utils/`: elementos realmente compartidos y libres de secretos.
 
 ## 4. Organización de una funcionalidad
@@ -99,8 +104,9 @@ La página compone la vista; los hooks encapsulan interacciones de UI; los servi
 ## 5. Routing, estado y API
 
 - `/login` y los flujos de recuperación/MFA son rutas públicas cuando estén requeridos.
-- Las rutas privadas usan `ProtectedRoute` para UX, considerando estados `loading`, `authenticated` y `unauthenticated`.
-- Los permisos que se usen para menús o botones son indicativos. Ante `403`, mostrar denegación apropiada; no asumir que ocultar un botón protege el endpoint.
+- Las rutas privadas usan `ProtectedRoute` y distinguen sesión en carga, no autenticada, autenticada y autenticada sin permiso.
+- La autorización visual usa roles/permisos entregados por `/api/auth/me`; evitar checks de rol duplicados en cada página y componente.
+- Los permisos de menús, rutas y botones son indicativos. Ante `403`, mostrar denegación apropiada; no asumir que ocultar un botón protege el endpoint.
 - Por defecto el navegador consume la API en el mismo origen mediante `/api`; Nginx reenvía ese path al backend .NET.
 - `API_PROXY_URL` configura en tiempo de ejecución el upstream interno de Nginx, por ejemplo `http://api:5000`; no es un secreto y no se incluye en el bundle.
 - `VITE_API_URL` solo se define cuando un despliegue necesita una URL pública directa distinta; nunca contiene secretos ni credenciales.
@@ -130,6 +136,8 @@ La página compone la vista; los hooks encapsulan interacciones de UI; los servi
 6. En éxito, el backend retorna solo un access token de corta duración en JSON y establece el refresh cookie HttpOnly. El frontend guarda el access token únicamente en memoria.
 7. `AuthContext` marca al usuario autenticado y llama `GET /api/auth/me` para obtener la identidad mínima necesaria para la UI.
 
+La respuesta de `/api/auth/me` incluye `roleCodes` y `permissionCodes` efectivos. El frontend los guarda solo en memoria; son un snapshot para decidir qué mostrar y no sustituyen autorización del backend.
+
 ### 6.3 Inicio/restauración de sesión
 
 1. Tras recargar, el frontend no intenta reconstruir una sesión leyendo tokens de storage.
@@ -155,6 +163,20 @@ La página compone la vista; los hooks encapsulan interacciones de UI; los servi
 3. Si el endpoint falla, limpiar de todos modos el estado local y explicar que el cierre remoto no pudo confirmarse según la UX acordada.
 4. Para “cerrar todas las sesiones”, cambio de contraseña, recuperación o cambio de MFA, llamar la operación explícita de backend y descartar access token/local state.
 
+### 6.6 Autorización RBAC en rutas y componentes
+
+Los roles base de este sistema son `ADMINISTRADOR` y `PROFESIONAL`. Una cuenta puede tener varios roles. Mantener códigos estables en la lógica y etiquetas localizadas aparte. La matriz de capacidades de cada rol aún debe definirse con requisitos; el frontend no asigna permisos por su cuenta.
+
+- `AuthContext` conserva `roleCodes: string[]` y los códigos de `permissionCodes` recibidos de `/api/auth/me`, junto con un `Set` en memoria para consultas. Tras reload, vuelve a obtenerlos del backend mediante el flujo de sesión.
+- `ProtectedRoute` permite declarar `requiredRoles` y/o `requiredPermissions`. Mientras la sesión carga, muestra carga; si no hay sesión, redirige a login conservando la ruta de retorno; si la sesión existe pero no cumple el requisito, muestra/dirige a una pantalla `403`.
+- Cuando `requiredRoles` contiene varios roles, el modo `any` es el predeterminado (basta uno); usar `all` solo si la regla lo requiere. `requiredPermissions` requiere todos (`all`) por defecto; usar `any` únicamente cuando el requisito lo indique explícitamente.
+- Preferir guards por permiso para páginas/operaciones concretas. El check por rol queda para restricciones gruesas de área o navegación y no reemplaza el permiso de acción.
+- `useAuthorization()` expone consultas centralizadas como `hasRole`, `hasPermission` y `hasAllPermissions`. `<Can permission="<modulo>:<recurso>:<accion>" />` permite ocultar o renderizar contenido alternativo para controles concretos.
+- Los botones, links, menús, acciones de tabla y secciones sensibles se muestran solo cuando la UI snapshot incluye el permiso requerido. Se puede deshabilitar en vez de ocultar cuando exista una razón UX explícita, sin tratarlo como control de seguridad.
+- No distribuir condicionales del tipo `user.role === 'ADMINISTRADOR'` por la aplicación. No codificar permisos no acordados ni inferir que Administrador tiene acceso irrestricto a todos los datos.
+- Si el backend devuelve `403`, no reintentar refresh; opcionalmente sincronizar `/api/auth/me` una sola vez si el producto necesita reflejar una revocación de permisos.
+- Cambiar el rol o permiso en el cliente nunca otorga acceso: API .NET aplica RBAC y autorización por recurso en cada operación.
+
 ## 7. CSRF, XSS y protección del navegador
 
 - Incluir el token antifalsificación en encabezado (`X-CSRF-TOKEN`) para login, refresh, logout y toda operación que dependa de cookies.
@@ -169,7 +191,7 @@ La página compone la vista; los hooks encapsulan interacciones de UI; los servi
 
 | Categoría | Requisitos frontend |
 |---|---|
-| **A01 Broken Access Control** | Las rutas protegidas son UX; ocultar controles no sustituye autorización backend. No inferir acceso por IDs o valores del browser. |
+| **A01 Broken Access Control** | `ProtectedRoute` y `<Can>` controlan UX; no sustituyen autorización RBAC por función y recurso en backend. No inferir permisos ni alcance por IDs o valores del browser. |
 | **A02 Security Misconfiguration** | No incluir secretos; usar HTTPS; configurar CSP/headers en hosting; no exponer configuración dev ni sourcemaps sensibles; verificar CORS con backend. |
 | **A03 Software Supply Chain Failures** | Mantener `package-lock.json`; revisar dependencias y scripts; escanear npm dependencies; limitar paquetes y scripts de build. |
 | **A04 Cryptographic Failures** | No persistir credenciales en web storage; no implementar criptografía propia; usar HTTPS para sesión completa. |
@@ -211,8 +233,8 @@ Los controles de OWASP API Security Top 10 (autorización por objeto/campo/funci
 
 - **Unitarias:** servicios/hooks de UI, estado de sesión, validación y manejo de errores.
 - **Integración:** Axios/authService con API mockeada de forma realista, CSRF, refresh concurrente y flujo de expiración.
-- **E2E:** login, MFA si aplica, restauración tras reload, rutas protegidas, `401`, `403`, logout y vencimiento.
-- **Seguridad:** comprobar que tokens no aparecen en local/session storage, URLs, logs o errores; verificar cookie HttpOnly en integración con backend; probar XSS/CSRF y manejo de contenido externo.
+- **E2E:** login, MFA si aplica, restauración tras reload, guards de ruta y componentes para Administrador, Profesional, roles múltiples y usuario sin permisos, `401`, `403`, logout y vencimiento.
+- **Seguridad:** comprobar que tokens no aparecen en local/session storage, URLs, logs o errores; verificar cookie HttpOnly en integración con backend; probar XSS/CSRF y manejo de contenido externo. Intentar llamadas directas a API sin permisos para confirmar que el backend responde `403` aunque el componente esté oculto.
 - **Contenedor/proxy:** construir la imagen de producción; ejecutar `nginx -t`; verificar fallback de rutas, proxy `/api/`, headers, caché, tamaño/timeouts y WebSocket si SignalR está habilitado.
 - Pipeline recomendado: `npm ci`, `npm run lint`, `npm run build`, auditoría de dependencias, secret scanning, análisis estático y DAST según el entorno.
 - No aprobar vulnerabilidades críticas/altas sin corregirlas o registrar aceptación explícita del riesgo, responsable y vencimiento.
@@ -223,11 +245,11 @@ Los controles de OWASP API Security Top 10 (autorización por objeto/campo/funci
 2. Derivar páginas, formularios, servicios y tipos de requisitos reales.
 3. Consumir API solo mediante cliente/servicios centralizados.
 4. No guardar tokens ni asumir que `ProtectedRoute` protege backend.
-5. Enviar antiforgery donde el contrato cookie lo requiera y controlar orígenes.
-6. Evitar contenido HTML no confiable, secretos y datos sensibles en logs.
-7. Manejar carga, `401`, `403` y errores sin bucles de retry.
-8. Probar build, lint y comportamiento de seguridad afectado.
-9. Mantener lockfile y revisar dependencias introducidas.
+5. Declarar los permisos de ruta y componente a partir de la matriz aprobada; no inferirlos del nombre del rol.
+6. Enviar antiforgery donde el contrato cookie lo requiera y controlar orígenes.
+7. Evitar contenido HTML no confiable, secretos y datos sensibles en logs.
+8. Manejar carga, `401`, `403` y errores sin bucles de retry.
+9. Probar build, lint y permisos UI; mantener lockfile y revisar dependencias introducidas.
 10. No crear páginas o módulos de ejemplo no solicitados ni realizar reorganizaciones ajenas.
 
 ## 13. Directrices para agentes de desarrollo
@@ -236,13 +258,14 @@ Al utilizar este documento como contexto:
 
 1. Inspeccionar primero el proyecto y respetar sus convenciones y dependencias bloqueadas.
 2. Tratar el stack y los contratos de backend definidos como baseline; reportar conflictos en lugar de cambiar contratos silenciosamente.
-3. No deducir funcionalidades de placeholders.
+3. Usar los roles base `ADMINISTRADOR` y `PROFESIONAL`; una cuenta puede tener varios. No deducir permisos o funcionalidades de placeholders.
 4. Mantener autenticación centralizada en `AuthContext` y servicios; nunca copiar el mecanismo de `localStorage` del TMS actual.
-5. Mantener secretos fuera del bundle y de toda variable `VITE_*`.
-6. No afirmar que un control de frontend reemplaza autorización de backend.
-7. Ejecutar y reportar las pruebas/build afectados sin refactors no solicitados.
+5. Consultar `roleCodes`/`permissionCodes` con guards/hooks/componentes centralizados; no crear reglas de permiso ad hoc.
+6. Mantener secretos fuera del bundle y de toda variable `VITE_*`.
+7. No afirmar que un guard, permiso de componente o menú oculto reemplaza autorización de backend.
+8. Ejecutar y reportar las pruebas/build afectados sin refactors no solicitados.
 
-Este estándar describe un baseline para nuevos frontends React conectados a ASP.NET Core. El dominio del producto, los roles y las rutas de negocio solo se derivan de requisitos explícitos.
+Este estándar describe un baseline para nuevos frontends React conectados a ASP.NET Core. Para este sistema fija los roles `ADMINISTRADOR` y `PROFESIONAL`, pero la matriz de permisos, módulos y rutas de negocio solo se deriva de requisitos explícitos.
 
 ## 14. Referencias
 

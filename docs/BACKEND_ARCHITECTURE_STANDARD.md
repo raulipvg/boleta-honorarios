@@ -148,7 +148,7 @@ Contrato propuesto para SPA React + API .NET:
 | `POST` | `/api/auth/refresh` | Valida y rota el refresh cookie; devuelve un nuevo access token. |
 | `POST` | `/api/auth/logout` | Revoca la sesión actual y expira la cookie. |
 | `POST` | `/api/auth/logout-all` | Revoca todas las sesiones del usuario; requiere autenticación y antiforgery. |
-| `GET` | `/api/auth/me` | Devuelve la identidad mínima del usuario autenticado. |
+| `GET` | `/api/auth/me` | Devuelve identidad, roles asignados y permisos efectivos necesarios para construir la UI. |
 | `POST` | `/api/auth/forgot-password` | Inicia recuperación sin revelar si la cuenta existe. |
 | `POST` | `/api/auth/reset-password` | Consume un token de recuperación de un solo uso. |
 
@@ -196,11 +196,41 @@ El refresh token no se devuelve en JSON ni se expone a JavaScript. El access tok
 - Recomendar publicar SPA y API bajo el mismo sitio/origen mediante reverse proxy. Si el despliegue requiere contextos cross-site, documentar restricciones del navegador y controles compensatorios antes de aprobarlo.
 - El Bearer JWT es el mecanismo de autenticación de las rutas de negocio; la cookie refresh no autoriza automáticamente esas rutas.
 
+### 7.6 Autorización RBAC: roles y permisos
+
+La autorización de este sistema usa control de acceso basado en roles (RBAC), con permisos para expresar capacidades concretas:
+
+- Los roles base conocidos son `ADMINISTRADOR` y `PROFESIONAL`. Los códigos son identificadores estables; las etiquetas visibles se localizan por separado.
+- Un usuario puede tener varios roles. Los permisos efectivos se calculan como la unión de los permisos concedidos por sus roles; el acceso se deniega por defecto si no existe un permiso aplicable.
+- El backend es la fuente de verdad del catálogo rol-permiso y de las asignaciones usuario-rol. No inferir permisos de negocio solamente por el nombre del rol.
+- La matriz concreta de capacidades por rol aún debe definirse a partir de requisitos. No dar a `ADMINISTRADOR` un bypass de autorización por recurso ni asumir que `PROFESIONAL` puede acceder a todos los registros profesionales.
+- Usar códigos de permiso estables con convención `<modulo>:<recurso>:<accion>`; por ejemplo, `<modulo>:<recurso>:ver`. Los nombres entre ángulos son placeholders, no permisos a crear automáticamente.
+
+#### Enforcement en ASP.NET Core
+
+- Requerir usuario autenticado por defecto mediante una política fallback; marcar con `[AllowAnonymous]` solo endpoints que deban ser públicos.
+- Usar roles para restricciones de alto nivel cuando corresponda y políticas de permiso para operaciones concretas. Registrar políticas/handlers en el composition root; mantener los nombres y asignaciones en un catálogo central, no dispersos como strings en controllers.
+- Usar `IAuthorizationService`/authorization handlers para autorización basada en recurso. Cada lectura o cambio con un ID comprueba pertenencia, asignación y tenant después de autenticar al principal.
+- Aplicar las verificaciones en backend aunque la SPA ya haya protegido la ruta o escondido el control. Devolver `401` si falta autenticación y `403` cuando la identidad no tenga autorización.
+- El access JWT identifica al sujeto y la sesión con claims mínimos. No tratar roles/permisos guardados en React como credenciales ni confiar exclusivamente en claims de autorización que puedan quedar obsoletos.
+- `/api/auth/me` entrega `roleCodes` y `permissionCodes` efectivos como snapshot para UI. La API revalida autorización según la política vigente y aplica expiración/versionado de sesión para que cambios de roles y permisos surtan efecto dentro del plazo definido.
+- Toda modificación de asignaciones de roles o permisos debe estar autorizada, auditada y protegida por reautenticación/MFA para operaciones sensibles. Invalidar o actualizar sesiones/cachés de autorización afectados.
+
+#### Plantilla de matriz de permisos
+
+Completarla cuando los requisitos funcionales definan acciones y alcance de datos:
+
+| Módulo/recurso | Código de permiso | `ADMINISTRADOR` | `PROFESIONAL` | Alcance del recurso |
+|---|---|---|---|---|
+| `<modulo>/<recurso>` | `<modulo>:<recurso>:<accion>` | Por definir | Por definir | Por definir |
+
+La matriz no reemplaza las comprobaciones de propiedad/tenant. Un permiso funcional permite intentar la operación; cada recurso todavía debe estar dentro del ámbito autorizado del usuario.
+
 ## 8. Baseline de seguridad OWASP Top 10:2025
 
 | Categoría | Requisitos de arquitectura y desarrollo |
 |---|---|
-| **A01 Broken Access Control** | Denegar por defecto; políticas por función; autorización por recurso/tenant en cada operación; DTOs allowlist; pruebas BOLA/IDOR y elevación de privilegios. |
+| **A01 Broken Access Control** | RBAC con denegación por defecto; políticas por función; autorización por recurso/tenant en cada operación; DTOs allowlist; pruebas BOLA/IDOR, escalada de privilegios y cambios de asignación de roles. |
 | **A02 Security Misconfiguration** | Configuración segura por ambiente; CORS exacto; HTTPS/HSTS; cookies seguras; secretos en vault/secret manager; Swagger y errores detallados solo en desarrollo; proxies confiables explícitos. |
 | **A03 Software Supply Chain Failures** | SDK y paquetes soportados; versiones centralizadas y lockfiles; revisión de vulnerabilidades transitivas; SBOM y análisis de dependencias en CI; imágenes base mantenidas. |
 | **A04 Cryptographic Failures** | TLS moderno; hashing adaptativo; claves de firma separadas, protegidas y rotables; tokens mínimos; refresh almacenado como hash; no exponer secretos en logs/configuración. |
@@ -219,7 +249,7 @@ El refresh token no se devuelve en JSON ni se expone a JavaScript. El access tok
 | **API2 Broken Authentication** | Aplicar el flujo login, tokens, MFA, limitación y revocación descrito en la sección 7. |
 | **API3 Broken Object Property Level Authorization** | DTOs separados por operación y allowlist de propiedades; no serializar entidades completas ni confiar en binding masivo. |
 | **API4 Unrestricted Resource Consumption** | Límites por usuario/IP/operación, paginación acotada, tamaños máximos, timeouts, cancelación y cuotas a integraciones costosas. |
-| **API5 Broken Function Level Authorization** | Políticas explícitas por endpoint/operación; pruebas de rol/privilegio para rutas administrativas y públicas. |
+| **API5 Broken Function Level Authorization** | Políticas explícitas por endpoint/operación; comprobar permisos efectivos de usuarios con uno o varios roles; pruebas para rutas administrativas, profesionales y públicas. |
 | **API6 Unrestricted Access to Sensitive Business Flows** | Rate/velocity limits, idempotencia y controles de negocio para flujos que generen costos, cambios o beneficios abusables. |
 | **API7 SSRF** | Allowlist de destinos cuando proceda; validar esquema, host y resolución; bloquear redes internas no autorizadas; limitar redirects, tiempo y tamaño de respuesta. |
 | **API8 Security Misconfiguration** | Hardening de ASP.NET, HTTPS, headers, CORS, configuración por ambiente y eliminación de endpoints de diagnóstico expuestos. |
@@ -243,7 +273,7 @@ Estructurar pruebas por frontera, sin forzar repositorios solo para facilitar mo
 - **Unitarias:** invariantes/reglas, autorización de aplicación, transiciones y validadores.
 - **Integración:** EF Core/PostgreSQL, transacciones, restricciones, filtros por tenant y rotación de sesión.
 - **API/end-to-end:** status codes, DTOs, headers/cookies, CORS/CSRF y flujos de autenticación.
-- **Seguridad:** BOLA, permisos por función/propiedad, inyección, enumeración, rate limit, reset, MFA, refresh replay, logout y expiraciones.
+- **Seguridad:** matriz RBAC (Administrador, Profesional, múltiples roles y sin permisos), BOLA, permisos por función/propiedad, inyección, enumeración, rate limit, reset, MFA, refresh replay, logout y expiraciones.
 
 Gates sugeridos en CI/CD: `dotnet restore`, `dotnet build -c Release`, `dotnet test`, análisis estático, escaneo de secretos, análisis de vulnerabilidades NuGet, construcción y escaneo de imagen, SBOM y DAST (por ejemplo OWASP ZAP) según el entorno. No liberar con hallazgos críticos/altos sin remediar o aceptar el riesgo de forma explícita, con responsable y vencimiento.
 
@@ -262,7 +292,7 @@ Gates sugeridos en CI/CD: `dotnet restore`, `dotnet build -c Release`, `dotnet t
 2. Definir actor, datos, permisos, abuso esperado y límites del flujo.
 3. Crear únicamente endpoints, DTOs, servicios y entidades requeridos.
 4. Validar input en API y reglas en Application/Domain.
-5. Autorizar la función y el objeto/tenant en backend en todas las rutas afectadas.
+5. Autorizar la función con permisos RBAC y el objeto/tenant en backend en todas las rutas afectadas.
 6. Usar consultas parametrizadas y devolver DTOs allowlist.
 7. Añadir pruebas unitarias y de integración/API proporcionales al riesgo.
 8. Revisar secretos, logs, errores, límites de consumo e impacto en el Top 10/API Top 10.
@@ -276,7 +306,7 @@ Al usar este documento como contexto:
 1. Inspeccionar primero `.sln`, `.csproj`, `Program.cs`, configuraciones, módulos y pruebas existentes.
 2. Tratar el stack y contratos explícitos como baseline. Si los requisitos chocan con ellos, describir el conflicto y pedir decisión.
 3. Derivar módulos y reglas de requisitos reales; placeholders no son funcionalidades.
-4. No añadir CRUDs, roles, claims, entidades, endpoints o capas sin requisito.
+4. Usar los roles base `ADMINISTRADOR` y `PROFESIONAL`; permitir múltiples roles por usuario. No inventar la matriz de permisos ni añadir CRUDs, claims, entidades, endpoints o capas sin requisito.
 5. Proteger cada operación en backend; no asumir que una ruta React protegida autoriza una llamada.
 6. Nunca almacenar ni imprimir secretos, credenciales, access tokens, refresh tokens o cookies.
 7. Seguir el flujo de cookie/CSRF de la sección 7 cuando el cliente sea un navegador; no copiar el contrato de autenticación legacy del TMS.
