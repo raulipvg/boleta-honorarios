@@ -1,229 +1,298 @@
-# Propuesta técnica base: Backend para MVP
+# Estándar de arquitectura: Backend ASP.NET Core (.NET)
 
-Este documento sirve como contexto técnico para construir backends de distintos productos con el stack acordado. Propone un monolito modular NestJS con pocas capas explícitas, adecuado para comenzar un MVP sin anticipar dominios ni reglas de negocio que todavía no se han definido.
+Este documento define una arquitectura de referencia para backends de nuevos proyectos y sirve como contexto para desarrolladores y agentes de IA. Toma como referencia tecnológica `TMS/tms-backend-web`, pero establece controles de seguridad y límites de capas para proyectos nuevos; no implica que el TMS actual ya implemente todos los controles aquí descritos.
 
-Los nombres `<modulo>`, `<entidad>` y `<operacion>` son placeholders estructurales. No representan funcionalidades que deban crearse automáticamente.
+Los nombres `<Proyecto>`, `<modulo>`, `<entidad>` y `<operacion>` son placeholders estructurales. No representan funcionalidades que deban generarse automáticamente.
 
 ## 1. Stack tecnológico
 
-- **Runtime:** Node.js 24.
-- **Framework API:** NestJS 12.1.1.
-- **Lenguaje:** TypeScript.
-- **Transporte HTTP:** API REST sobre HTTP/JSON, usando el adaptador Express predeterminado de NestJS.
-- **Persistencia:** PostgreSQL y Prisma.
-- **Autenticación:** JWT Bearer para endpoints protegidos y refresh token mediante cookie `HttpOnly`.
-- **Contenedores:** Docker y Docker Compose.
+- **Plataforma:** C# sobre .NET 10 LTS y ASP.NET Core Web API.
+- **Transporte:** API REST sobre HTTP/JSON mediante controllers.
+- **Persistencia de referencia:** PostgreSQL con Entity Framework Core 10 y el proveedor Npgsql.
+- **Autenticación API:** access token JWT Bearer de corta duración y refresh token opaco en cookie `HttpOnly`.
+- **Documentación API:** OpenAPI y Swagger, habilitados según ambiente.
+- **Contenedores:** Docker y Docker Compose, con imagen multi-stage `dotnet/sdk` → `dotnet/aspnet`.
+- **Seguridad:** OWASP Top 10:2025, OWASP API Security Top 10:2023 y OWASP ASVS 5.0.0.
 
-Este stack es la base tecnológica fija de la propuesta. Las versiones acordadas se registran en `package.json` y `package-lock.json`; no se cambian sin una decisión explícita del proyecto. PostgreSQL se ejecuta en un contenedor independiente del backend.
+El TMS de referencia apunta a `net10.0`, EF Core `10.0.10` y Npgsql `10.0.3`. Cada proyecto nuevo registra versiones soportadas y compatibles en `global.json`, `Directory.Packages.props` y/o los archivos de proyecto; actualiza parches de seguridad sin cambiar versiones de forma silenciosa. El target framework y la versión de cada paquete se confirman al iniciar el proyecto.
 
-## 2. Principios para el MVP
+El objetivo de verificación recomendado es OWASP ASVS 5.0.0 nivel 2 para aplicaciones que procesen credenciales, datos personales o información de negocio. Los sistemas de alto impacto deben definir si necesitan nivel 3 y pruebas independientes adicionales. OWASP Top 10 es una base de priorización, no una certificación.
 
-- Mantener un único backend modular organizado por funcionalidades.
-- Crear módulos solo cuando los requisitos definan sus responsabilidades.
-- Usar `controller + service + DTOs` como estructura normal de cada módulo.
-- Permitir que los servicios inyecten `PrismaService` directamente para las operaciones iniciales.
-- Mantener el controller enfocado en HTTP y delegar la lógica de funcionalidad al service.
-- Usar validación en los límites HTTP y guards en las operaciones protegidas.
-- Evitar repositorios genéricos, puertos, capas de dominio y casos de uso independientes cuando no aporten valor concreto.
-- Mantener secretos y configuración sensible fuera del código y del frontend.
+## 2. Principios arquitectónicos
 
-Esta propuesta prioriza simplicidad y separación por módulos. No describe una arquitectura hexagonal completa: el acceso directo del service a Prisma se acepta como una decisión pragmática para el MVP.
+- Empezar como monolito modular, separado por proyectos/capas y funcionalidades; desplegar microservicios solo ante necesidades operativas concretas.
+- Derivar módulos, entidades, endpoints y reglas de los requisitos reales.
+- Mantener la API como punto de entrada HTTP y ubicar reglas de negocio fuera de los controllers.
+- Mantener el dominio independiente de ASP.NET Core, EF Core y proveedores externos.
+- Usar DTOs explícitos para entrada y salida; no enlazar entidades EF directamente desde el cliente.
+- Validar los límites de entrada y autorizar cada operación y recurso en el servidor.
+- Aplicar mínimo privilegio, denegación por defecto y manejo seguro de errores.
+- Añadir abstracciones cuando reduzcan acoplamiento real o faciliten una frontera de integración; no crear capas, repositorios genéricos ni módulos vacíos por plantilla.
+- Tratar las decisiones de seguridad como requisitos funcionales verificables, no como tareas posteriores.
 
-## 3. Estructura de carpetas
+## 3. Estructura recomendada de la solución
 
 ```text
-backend/
-├── Dockerfile
-├── docker-compose.yaml
-├── .dockerignore
-├── .env.example
-├── package.json
-├── package-lock.json
-├── nest-cli.json
-├── tsconfig.json
-├── prisma/
-│   ├── schema.prisma
-│   └── migrations/
-└── src/
-    ├── main.ts
-    ├── app.module.ts
-    ├── common/
-    │   ├── filters/
-    │   ├── interceptors/
-    │   ├── pipes/
-    │   └── decorators/
-    ├── config/
-    ├── database/
-    │   ├── prisma.module.ts
-    │   └── prisma.service.ts
-    └── modules/
-        ├── auth/
-        │   ├── auth.module.ts
-        │   ├── auth.controller.ts
-        │   ├── auth.service.ts
-        │   ├── dto/
-        │   ├── guards/
-        │   └── strategies/
-        └── <modulo>/
-            ├── <modulo>.module.ts
-            ├── <modulo>.controller.ts
-            ├── <modulo>.service.ts
-            ├── dto/
-            └── <modulo>.service.spec.ts
+<Proyecto>.sln
+├── global.json
+├── Directory.Build.props                 # opcional: convenciones comunes
+├── Directory.Packages.props              # opcional: versiones centralizadas
+├── src/
+│   ├── <Proyecto>.Api/
+│   │   ├── Controllers/
+│   │   ├── Middleware/
+│   │   ├── Authorization/
+│   │   ├── Realtime/                      # opcional: SignalR
+│   │   ├── Program.cs
+│   │   └── appsettings*.json              # sin secretos
+│   ├── <Proyecto>.Application/
+│   │   ├── Features/
+│   │   │   └── <modulo>/
+│   │   │       ├── DTOs/
+│   │   │       ├── Interfaces/
+│   │   │       └── Services/              # o casos de uso cuando aporte valor
+│   │   ├── Configuration/
+│   │   ├── Exceptions/
+│   │   └── Common/
+│   ├── <Proyecto>.Domain/
+│   │   ├── Entities/
+│   │   ├── ValueObjects/                  # solo si existen conceptos del dominio
+│   │   ├── Enums/
+│   │   └── Exceptions/
+│   └── <Proyecto>.Infrastructure/
+│       ├── Data/
+│       ├── Persistence/
+│       ├── Identity/
+│       ├── Integrations/
+│       ├── Repositories/                  # solo si hay una frontera útil
+│       └── DependencyInjection.cs
+└── tests/
+    ├── <Proyecto>.UnitTests/
+    ├── <Proyecto>.IntegrationTests/
+    └── <Proyecto>.ApiTests/
 ```
 
-La estructura interna crece según la necesidad. No es obligatorio crear todos los directorios de ejemplo para cada módulo.
+### Referencias entre proyectos
+
+```text
+Api → Application → Domain
+Api → Infrastructure → Application / Domain
+```
+
+- `Domain` no referencia otros proyectos de la solución.
+- `Application` referencia `Domain` y declara contratos que requiere.
+- `Infrastructure` implementa persistencia e integraciones detrás de esos contratos.
+- `Api` es el composition root: registra implementaciones de `Infrastructure` y servicios de `Application`.
+- Un acceso directo desde `Application` a EF Core puede aceptarse como excepción explícita de un MVP, pero no debe arrastrar entidades EF al contrato HTTP ni convertirse en una dependencia sin evaluar sus costes.
+
+No todos los directorios del ejemplo se crean si el módulo no los necesita.
 
 ## 4. Responsabilidades
 
-| Elemento | Responsabilidad |
+| Componente | Responsabilidad |
 |---|---|
-| `main.ts` | Arranca NestJS y configura prefijo HTTP, CORS, validación global y opciones del servidor. |
-| `app.module.ts` | Compone los módulos de la aplicación y las dependencias compartidas. |
-| `<modulo>.module.ts` | Registra controllers, services y dependencias del módulo. |
-| `<modulo>.controller.ts` | Recibe solicitudes HTTP, valida o transforma la entrada mediante DTOs y delega en el service. |
-| `<modulo>.service.ts` | Implementa las operaciones y reglas de la funcionalidad; puede usar Prisma directamente en el MVP. |
-| `dto/` | Define y valida contratos de entrada y salida del módulo. |
-| `database/` | Expone el cliente compartido de Prisma y su ciclo de vida. |
-| `common/` | Contiene elementos técnicos transversales realmente compartidos, no lógica específica de una funcionalidad. |
-| `config/` | Carga y valida la configuración proveniente del entorno. |
+| `Program.cs` | Configura DI, autenticación, autorización, CORS, antiforgery, límites, middleware y pipeline. |
+| Controller | Recibe HTTP, aplica políticas, enlaza/valida DTOs y traduce resultados a códigos y respuestas HTTP. No contiene consultas ni reglas de negocio. |
+| Application service/caso de uso | Coordina una operación, valida precondiciones de aplicación, aplica reglas y utiliza contratos de persistencia/integración. |
+| DTO | Expone solamente los campos permitidos en cada operación. Evita over-posting/mass assignment y filtración de entidades. |
+| Domain | Modela conceptos, invariantes y reglas de negocio independientes del transporte y persistencia. |
+| `DbContext` y configuraciones EF | Mapean entidades, índices, relaciones, filtros y transacciones en `Infrastructure`. |
+| Repositorio/puerto | Aísla una frontera útil o consulta especializada; no debe ser una copia mecánica de `DbSet`. |
+| Middleware/filtro | Gestiona funciones HTTP transversales, como Problem Details, correlación y antiforgery donde aplique. |
+| Configuración | Lee y valida opciones tipadas; nunca contiene secretos en archivos versionados. |
 
 ## 5. Flujo normal de una solicitud
 
 ```text
 HTTP Request
-    ↓
-Controller
-    ↓ DTO validado
-Service
-    ↓ PrismaService
-PostgreSQL
-    ↓
-Service transforma el resultado
-    ↓
-Controller responde HTTP
+  → autenticación (si corresponde)
+  → autorización de función y recurso
+  → binding + validación del DTO
+  → controller
+  → caso de uso / servicio de Application
+  → contrato de Application
+  → implementación de Infrastructure / EF Core
+  → PostgreSQL o integración externa
+  → DTO de respuesta
+  → HTTP Response
 ```
 
-El controller no ejecuta consultas Prisma ni concentra reglas de negocio. El service no maneja detalles de transporte HTTP, como cookies o códigos de respuesta, salvo que una decisión de implementación de Nest requiera coordinarse con el adaptador correspondiente.
+- Toda operación que recibe un identificador comprueba que el usuario puede acceder a ese objeto; no basta con autenticar al usuario.
+- Consultas y transacciones deben limitar datos y filas en el servidor, usar paginación con límites y soportar cancelación mediante `CancellationToken`.
+- Las transacciones agrupan únicamente cambios que deban ser atómicos.
+- Usar LINQ parametrizado de EF Core. El SQL crudo requiere parámetros; nunca concatenar entradas para formar SQL o comandos de sistema.
+- Proyectar a DTOs y seleccionar solo propiedades necesarias. No aceptar entidades de dominio/EF completas desde el body.
 
-### Acceso a datos en el MVP
+## 6. Módulos y evolución
 
-- Los servicios pueden inyectar `PrismaService` y llamar a Prisma directamente.
-- Las consultas y transacciones quedan dentro del módulo dueño de la funcionalidad.
-- No se añade una capa de repositorios que solo replique llamadas de Prisma.
-- Los modelos de Prisma no se exponen automáticamente como contratos HTTP: usar DTOs o mapeo de respuesta cuando el API necesite un formato distinto.
-- Las operaciones que deben ser atómicas usan transacciones de Prisma dentro del service responsable.
+- Los módulos se definen a partir del dominio real; cada uno posee sus contratos HTTP, DTOs y servicios/casos de uso correspondientes.
+- Un controller delega en Application y mantiene el detalle HTTP en la capa API.
+- Un módulo no consume directamente clases internas de otro módulo. Definir colaboración explícita cuando haya una dependencia real.
+- `Common` contiene solo componentes técnicos transversales y reutilizados; no es un cajón para lógica de negocio.
+- Añadir dominio más rico, repositorios, casos de uso explícitos o mensajería cuando existan reglas, transacciones, integraciones o necesidades de prueba que lo justifiquen.
+- Las abstracciones evolucionan módulo por módulo, no mediante una reorganización masiva anticipada.
 
-## 6. Módulos y responsabilidades de negocio
+## 7. Autenticación y funcionamiento del login
 
-- Los módulos se derivan de funcionalidades expresadas en los requisitos del producto.
-- Cada módulo posee sus controllers, services y DTOs.
-- Un módulo no importa directamente los services internos de otro módulo. Si aparece una dependencia entre funcionalidades, se evalúa una colaboración explícita a través de los módulos, sin mover prematuramente todo a una capa compartida.
-- No se crea un módulo global para alojar lógica que todavía no tiene un dominio claro.
-- `common/` no se usa como cajón de sastre para helpers de una sola funcionalidad.
+### 7.1 Componentes y contrato
 
-Los nombres de `<modulo>` y `<entidad>` se sustituyen por términos del dominio real cuando el producto y sus casos de uso estén especificados.
+Si el proyecto administra credenciales propias, usar ASP.NET Core Identity o un proveedor de identidad reconocido (OIDC) en vez de inventar gestión de usuarios, hashing, MFA y recuperación. La emisión de access/refresh tokens se coordina desde un servicio de autenticación con límites claros.
 
-## 7. Cuándo añadir más estructura
+Contrato propuesto para SPA React + API .NET:
 
-La simplicidad del MVP no impide evolucionar. Las abstracciones se añaden cuando resuelven un problema observado:
-
-- **Caso de uso independiente:** cuando una operación tiene varios pasos, reglas de negocio complejas, coordinación de dependencias o una responsabilidad que ya no se entiende bien dentro del service.
-- **Dominio explícito:** cuando existen invariantes, transiciones o reglas que conviene modelar independientemente de NestJS y Prisma.
-- **Repositorio o puerto:** cuando se necesita más de una implementación, una frontera clara con una integración externa, o el acoplamiento a Prisma dificulta de forma concreta las pruebas o los cambios.
-- **Adaptador externo:** cuando una funcionalidad integra un proveedor, servicio remoto u otra tecnología sustituible.
-
-La evolución se realiza módulo por módulo. No se requiere crear de antemano `domain/`, `application/`, `adapters/` ni puertos para cada persistencia. No introducir un repositorio genérico como requisito para todos los módulos.
-
-## 8. Módulo de autenticación
-
-La autenticación es un módulo Nest independiente:
-
-```text
-modules/auth/
-├── auth.module.ts
-├── auth.controller.ts
-├── auth.service.ts
-├── dto/
-├── guards/
-└── strategies/
-```
-
-Los guards y la estrategia JWT protegen endpoints y establecen la identidad autenticada en la solicitud. El módulo implementa el contrato JWT Bearer; no presupone roles, permisos ni atributos de usuario que el producto todavía no haya definido.
-
-### Política de tokens y endpoints
-
-- El access token JWT tiene duración limitada y se envía en `Authorization: Bearer <accessToken>`.
-- El refresh token se transmite mediante cookie `HttpOnly`, se rota al renovar y puede revocarse al cerrar sesión.
-- Los secretos de firma y la configuración de emisor/audiencia se quedan exclusivamente en el backend.
-- Las duraciones, claims y modelo de sesión definitivos se fijarán durante la implementación del proyecto.
-
-| Método | Endpoint | Responsabilidad |
+| Método | Endpoint | Función |
 |---|---|---|
-| `POST` | `/api/auth/login` | Valida credenciales, devuelve un access token y establece la cookie de refresh. |
-| `POST` | `/api/auth/refresh` | Valida y rota la cookie; devuelve un nuevo access token. |
-| `POST` | `/api/auth/logout` | Revoca la sesión de refresh y expira la cookie. |
-| `GET` | `/api/auth/me` | Devuelve la identidad asociada al Bearer token actual. |
+| `GET` | `/api/auth/csrf` | Emite/prepara el token antifalsificación de la sesión anónima. |
+| `POST` | `/api/auth/login` | Verifica credenciales; si corresponde, inicia el desafío MFA. En éxito emite access token y establece cookie refresh. |
+| `POST` | `/api/auth/mfa/verify` | Completa un desafío MFA de corta vida. |
+| `POST` | `/api/auth/refresh` | Valida y rota el refresh cookie; devuelve un nuevo access token. |
+| `POST` | `/api/auth/logout` | Revoca la sesión actual y expira la cookie. |
+| `POST` | `/api/auth/logout-all` | Revoca todas las sesiones del usuario; requiere autenticación y antiforgery. |
+| `GET` | `/api/auth/me` | Devuelve la identidad mínima del usuario autenticado. |
+| `POST` | `/api/auth/forgot-password` | Inicia recuperación sin revelar si la cuenta existe. |
+| `POST` | `/api/auth/reset-password` | Consume un token de recuperación de un solo uso. |
 
-### Flujo de autenticación
+El refresh token no se devuelve en JSON ni se expone a JavaScript. El access token es Bearer, vive poco tiempo y permanece en memoria en el cliente. Las llamadas que usan refresh/logout incluyen cookie y token antifalsificación.
 
-1. El cliente envía credenciales a `POST /api/auth/login`.
-2. `AuthController` valida el DTO y delega la operación en `AuthService`.
-3. `AuthService` valida las credenciales y gestiona la emisión o renovación de tokens.
-4. `AuthController` devuelve el access token en la respuesta y establece la cookie de refresh.
-5. El frontend mantiene el access token en memoria y lo envía como Bearer en solicitudes protegidas.
-6. Al iniciar la aplicación o al recibir un `401`, el frontend solicita `POST /api/auth/refresh` con credenciales de cookie habilitadas.
-7. Si el refresh es válido, el backend lo rota y devuelve un access token nuevo; si no, responde `401` y el controller expira la cookie.
-8. `POST /api/auth/logout` invalida la sesión de refresh; el controller expira la cookie y el frontend elimina el estado local.
+### 7.2 Secuencia de login
 
-El mecanismo de refresh debe permitir revocación y evitar almacenar el token en claro. El access token se puede mantener válido hasta su expiración; una sesión de refresh revocada no puede obtener tokens nuevos.
+1. La SPA solicita `/api/auth/csrf` y conserva el token antifalsificación en memoria.
+2. El usuario envía identificador y contraseña a `/api/auth/login` por HTTPS con `X-CSRF-TOKEN` y el origen permitido.
+3. ASP.NET aplica límites de intentos antes de ejecutar el hash de contraseña. Normaliza el identificador según su tipo, pero no recorta ni transforma la contraseña.
+4. ASP.NET Core Identity/proveedor verifica la contraseña. Para una cuenta inexistente se usa una verificación de coste comparable para reducir diferencias de tiempo que faciliten enumeración.
+5. Credenciales inválidas, cuenta inexistente o no habilitada producen una respuesta genérica que no revela cuál condición falló. Los detalles internos se registran sin guardar credenciales.
+6. Para cuentas administrativas, cuentas de riesgo y acciones de alto impacto se exige MFA. Si falta el segundo factor, responder con un desafío corto, de un solo uso y sin emitir acceso completo ni refresh cookie.
+7. Tras completar factores, crear una sesión independiente. Generar el refresh secreto con CSPRNG; persistir solo su hash, identificador de familia, expiración, estado y metadatos mínimos de auditoría.
+8. Emitir access JWT corto (baseline configurable de 5–15 minutos), sin datos sensibles; validar algoritmo permitido, firma, issuer, audience, `sub`, `iat` y `exp`.
+9. Responder con el access token y establecer una cookie host-only `__Host-RefreshToken`: `HttpOnly`, `Secure` en todos los despliegues HTTPS, `Path=/`, sin `Domain`, `SameSite=Strict` o `Lax` según los flujos y expiración conforme a la política de sesión.
+10. La SPA guarda el access token solo en memoria y carga la identidad mediante `/api/auth/me`. El backend sigue verificando permisos en cada petición.
 
-### Guards, cookies y CORS
+### 7.3 Renovación, logout y ciclo de vida
 
-- `JwtAuthGuard` valida el Bearer token en endpoints protegidos.
-- Login y refresh se marcan explícitamente como rutas públicas respecto al guard Bearer.
-- La cookie de refresh usa `HttpOnly`; en producción también `Secure`.
-- `SameSite` se configura según el despliegue. Si se necesita contexto cross-site, usar `None; Secure` y protección CSRF apropiada.
-- CORS permite orígenes explícitos y credenciales; no se combina un origen `*` con credenciales.
-- Se valida el origen de solicitudes que usan cookies y se limita `Path`/`Domain` a lo necesario.
-- La ausencia o invalidez de autenticación produce `401`; la falta de autorización produce `403`.
+- Al iniciar o recargar la SPA, llamar a `/api/auth/refresh` con cookie y antiforgery; si funciona, reconstruir el estado de identidad. No leer ni persistir refresh tokens en el navegador.
+- Rotar refresh token en cada renovación mediante una transacción atómica. Detectar reutilización de un token rotado, revocar su familia y generar un evento de seguridad.
+- El frontend comparte una sola renovación concurrente y coordina pestañas para evitar carreras de rotación.
+- Al recibir `401`, intentar refresh una sola vez y reintentar la petición original una sola vez. Un `403` nunca inicia refresh.
+- Logout revoca la sesión actual en servidor y expira la cookie con los mismos atributos; el frontend limpia el estado en memoria.
+- Contraseñas cambiadas/restablecidas y eventos de riesgo invalidan las sesiones afectadas. Definir expiración idle y absoluta según impacto y riesgo.
+- Documentar el intervalo residual de validez de un JWT ya emitido. Para revocación inmediata de acciones de alto riesgo, validar estado/versión de sesión; en otros casos usar expiración corta y revocar refresh.
+- No vincular rígidamente cada sesión a IP o User-Agent; usarlos solo como señales de riesgo, evitando falsos positivos por redes móviles/proxies.
 
-## 9. Validación, errores y configuración
+### 7.4 Contraseñas, MFA y recuperación
 
-- Validar DTOs en la frontera HTTP mediante pipes de NestJS.
-- Mantener un formato de errores consistente mediante filtros comunes cuando el proyecto lo requiera.
-- Cargar configuración desde variables de entorno y validar las requeridas durante el arranque.
-- `.env.example` documenta nombres y formatos, nunca valores secretos reales.
-- `DATABASE_URL` y las claves JWT se configuran exclusivamente en el backend.
-- El prefijo global inicial de API es `/api`.
+- Preferir un proveedor OIDC existente cuando satisfaga los requisitos. Para identidad local, apoyarse en ASP.NET Core Identity y un hasher vigente; preferir Argon2id mantenido. Si existe requisito FIPS, usar PBKDF2-HMAC-SHA-256 con work factor acorde a la guía OWASP vigente.
+- No implementar criptografía propia ni guardar contraseñas, refresh tokens o códigos MFA en texto claro. No usar hashes rápidos como SHA-256 para contraseñas.
+- Como baseline sin MFA, exigir mínimo 15 caracteres; con MFA, nunca menos de 8. Admitir al menos 64 caracteres, Unicode y espacios, sin truncamiento silencioso ni reglas arbitrarias de composición.
+- Bloquear contraseñas comunes/filtradas cuando el flujo de alta o cambio lo permita; no exigir cambio periódico sin evidencia de compromiso.
+- MFA obligatorio para administradores; habilitar step-up MFA/reautenticación para cambios de seguridad, privilegios y acciones de impacto.
+- Recuperación: respuesta genérica, token aleatorio no enumerable, almacenado como hash, de un solo uso, con vencimiento; tras cambio, invalidar sesiones según política.
+- No permitir que el cambio de email, contraseña o MFA se complete únicamente por un access token de sesión larga; pedir reautenticación y/o MFA.
 
-## 10. Pruebas recomendadas para el MVP
+### 7.5 CSRF, CORS y cookies
 
-- Probar servicios y reglas funcionales aisladas, usando mocks de `PrismaService` cuando sea suficiente.
-- Añadir pruebas de integración para consultas o transacciones cuya interacción con PostgreSQL sea relevante.
-- Probar con pruebas end-to-end los contratos HTTP y los flujos críticos de autenticación.
-- No crear una estructura de puertos o repositorios solo para facilitar mocks; introducirla cuando el aislamiento aporte valor claro.
+- Como el navegador adjunta cookies automáticamente, proteger login, refresh, logout y cualquier operación autenticada por cookie con antiforgery. Verificar `Origin`; usar `Sec-Fetch-Site` como señal adicional.
+- `SameSite` es defensa en profundidad, no sustituto de token CSRF. Nunca usar `SameSite=None` sin `Secure` y mitigaciones CSRF explícitas.
+- CORS permite orígenes exactos y credenciales solo para los flujos que lo requieren. Nunca combinar `Access-Control-Allow-Credentials` con origen `*` ni confiar en subdominios wildcard.
+- Recomendar publicar SPA y API bajo el mismo sitio/origen mediante reverse proxy. Si el despliegue requiere contextos cross-site, documentar restricciones del navegador y controles compensatorios antes de aprobarlo.
+- El Bearer JWT es el mecanismo de autenticación de las rutas de negocio; la cookie refresh no autoriza automáticamente esas rutas.
 
-## 11. Docker y ejecución
+## 8. Baseline de seguridad OWASP Top 10:2025
 
-- `Dockerfile` incluye etapas de dependencias, build y ejecución de producción.
-- `docker-compose.yaml` proporciona el entorno de desarrollo con hot reload.
-- NestJS escucha en `0.0.0.0:3000` dentro del contenedor y publica el puerto `3000`.
-- PostgreSQL se ejecuta en su contenedor independiente y se conecta al backend mediante configuración de entorno.
-- `.dockerignore` excluye dependencias locales, archivos `.env`, compilaciones y artefactos innecesarios.
-- Las migraciones de Prisma se ejecutan mediante comandos de desarrollo o despliegue según el entorno.
+| Categoría | Requisitos de arquitectura y desarrollo |
+|---|---|
+| **A01 Broken Access Control** | Denegar por defecto; políticas por función; autorización por recurso/tenant en cada operación; DTOs allowlist; pruebas BOLA/IDOR y elevación de privilegios. |
+| **A02 Security Misconfiguration** | Configuración segura por ambiente; CORS exacto; HTTPS/HSTS; cookies seguras; secretos en vault/secret manager; Swagger y errores detallados solo en desarrollo; proxies confiables explícitos. |
+| **A03 Software Supply Chain Failures** | SDK y paquetes soportados; versiones centralizadas y lockfiles; revisión de vulnerabilidades transitivas; SBOM y análisis de dependencias en CI; imágenes base mantenidas. |
+| **A04 Cryptographic Failures** | TLS moderno; hashing adaptativo; claves de firma separadas, protegidas y rotables; tokens mínimos; refresh almacenado como hash; no exponer secretos en logs/configuración. |
+| **A05 Injection** | EF parametrizado; SQL crudo solo parametrizado y revisado; validación de límites; no formar comandos/consultas con entrada; escapar/serializar correctamente la salida. |
+| **A06 Insecure Design** | Modelar amenazas y abuso de negocio antes de funciones sensibles; límites de operación, idempotencia, step-up auth y controles anti-automatización adecuados. |
+| **A07 Authentication Failures** | Login y ciclo de sesión de esta sección; MFA para perfiles críticos; mensajes no enumerables; rate limiting; reset seguro; pruebas de rotación/revocación. |
+| **A08 Software or Data Integrity Failures** | DTOs explícitos; validar webhooks con firma y protección replay; controlar deserialización; proteger pipeline, artefactos, migraciones y despliegues. |
+| **A09 Security Logging and Alerting Failures** | Auditoría de login, MFA, cambios de privilegio y sesiones; métricas y alertas; correlación y retención definidas; nunca registrar contraseñas, tokens, cookies o secretos. |
+| **A10 Mishandling of Exceptional Conditions** | Respuestas seguras y consistentes; `ProblemDetails`; no filtrar stack traces; fallar de forma cerrada; transacciones y cancelación correctas; no dejar cambios parciales. |
 
-## 12. Directrices para agentes de desarrollo
+## 9. OWASP API Security Top 10:2023
 
-Al utilizar este documento como contexto para construir o modificar un backend:
+| Riesgo API | Control de referencia |
+|---|---|
+| **API1 BOLA** | Comprobar acceso del principal al objeto, empresa/tenant y relación de negocio en cada endpoint que use IDs. |
+| **API2 Broken Authentication** | Aplicar el flujo login, tokens, MFA, limitación y revocación descrito en la sección 7. |
+| **API3 Broken Object Property Level Authorization** | DTOs separados por operación y allowlist de propiedades; no serializar entidades completas ni confiar en binding masivo. |
+| **API4 Unrestricted Resource Consumption** | Límites por usuario/IP/operación, paginación acotada, tamaños máximos, timeouts, cancelación y cuotas a integraciones costosas. |
+| **API5 Broken Function Level Authorization** | Políticas explícitas por endpoint/operación; pruebas de rol/privilegio para rutas administrativas y públicas. |
+| **API6 Unrestricted Access to Sensitive Business Flows** | Rate/velocity limits, idempotencia y controles de negocio para flujos que generen costos, cambios o beneficios abusables. |
+| **API7 SSRF** | Allowlist de destinos cuando proceda; validar esquema, host y resolución; bloquear redes internas no autorizadas; limitar redirects, tiempo y tamaño de respuesta. |
+| **API8 Security Misconfiguration** | Hardening de ASP.NET, HTTPS, headers, CORS, configuración por ambiente y eliminación de endpoints de diagnóstico expuestos. |
+| **API9 Improper Inventory Management** | Inventariar versiones, hosts, hubs y endpoints; mantener OpenAPI; retirar versiones obsoletas y verificar exposición en despliegue. |
+| **API10 Unsafe Consumption of APIs** | Tratar respuestas externas como entrada no confiable; validar contenido, usar timeouts y límites; autenticar y observar fallos de integraciones. |
 
-1. Inspeccionar primero el proyecto, sus dependencias y convenciones. No reemplazar estructura existente sin necesidad y autorización.
-2. Tratar el stack de la sección 1 como baseline fijo. Si un requerimiento entra en conflicto con él, describir el conflicto y pedir una decisión antes de cambiarlo.
-3. Derivar módulos, entidades, endpoints y reglas de los requisitos concretos. Los placeholders son estructurales y no implican funcionalidades de negocio.
-4. Crear solo lo solicitado; no generar módulos, CRUDs, entidades ni capas vacías por anticipado.
-5. Usar `controller + service + DTOs` como patrón por defecto. Añadir casos de uso, dominio explícito, puertos o repositorios únicamente ante una necesidad concreta y localizada.
-6. Mantener consultas y transacciones en el módulo responsable; no crear una capa común de repositorios por convención.
-7. Proteger operaciones en backend y no depender de controles de navegación del frontend.
-8. Ejecutar build y pruebas relevantes para el cambio sin incorporar refactors ajenos al alcance.
+## 10. Validación, errores, secretos y logging
 
-Esta propuesta fija tecnologías y convenciones de MVP; no define un dominio de negocio. Los requisitos explícitos del producto determinan el software que se construye. Si contradicen esta propuesta, el agente debe señalar el conflicto en vez de tomar una decisión silenciosa.
+- Validar DTOs en la frontera HTTP con límites de tamaño, rango, formato y allowlists cuando aplique. La validación del cliente solo mejora UX.
+- Devolver un formato estable `ProblemDetails`, con `traceId`; no incluir SQL, stack traces, tokens, claves, datos personales innecesarios ni detalles de infraestructura.
+- Configuración sensible por variables de entorno/secret manager; validar al arranque. `.env.example` solo contiene nombres y valores ficticios.
+- Restringir el usuario de base de datos al mínimo privilegio; separar credenciales de runtime, migraciones y administración.
+- Logging estructurado y minimizado: registrar actor, acción, resultado, recurso necesario y correlación; nunca registrar passwords, access/refresh tokens, cookies, antiforgery tokens ni secretos.
+- Confiar `X-Forwarded-For` y otros encabezados solo desde proxies/ingress declarados; no aceptar IP de cliente arbitraria como identidad confiable.
+- En producción aplicar HTTPS/HSTS, `Cache-Control: no-store` en respuestas de autenticación y headers de seguridad apropiados a la aplicación.
+
+## 11. Pruebas y controles de entrega
+
+Estructurar pruebas por frontera, sin forzar repositorios solo para facilitar mocks:
+
+- **Unitarias:** invariantes/reglas, autorización de aplicación, transiciones y validadores.
+- **Integración:** EF Core/PostgreSQL, transacciones, restricciones, filtros por tenant y rotación de sesión.
+- **API/end-to-end:** status codes, DTOs, headers/cookies, CORS/CSRF y flujos de autenticación.
+- **Seguridad:** BOLA, permisos por función/propiedad, inyección, enumeración, rate limit, reset, MFA, refresh replay, logout y expiraciones.
+
+Gates sugeridos en CI/CD: `dotnet restore`, `dotnet build -c Release`, `dotnet test`, análisis estático, escaneo de secretos, análisis de vulnerabilidades NuGet, construcción y escaneo de imagen, SBOM y DAST (por ejemplo OWASP ZAP) según el entorno. No liberar con hallazgos críticos/altos sin remediar o aceptar el riesgo de forma explícita, con responsable y vencimiento.
+
+## 12. Docker y ejecución
+
+- Construcción multi-stage con imagen `mcr.microsoft.com/dotnet/sdk:10.0` y runtime `mcr.microsoft.com/dotnet/aspnet:10.0`, actualizando parches regularmente.
+- Publicar Release con `dotnet publish`; runtime sin SDK, sin herramientas de desarrollo y ejecutado como usuario no root.
+- Puerto configurable mediante entorno; el backend web TMS usa el puerto interno `5000` como referencia, no como requisito funcional universal.
+- PostgreSQL puede ir en Compose local independiente del API; en producción usar servicio gestionado o contenedor con volumen, red y credenciales separadas.
+- `.dockerignore` excluye `.env`, secretos, `bin/`, `obj/`, resultados de pruebas y artefactos locales.
+- No ejecutar migraciones destructivas automáticamente al iniciar producción sin procedimiento de despliegue y rollback definido.
+
+## 13. Checklist para nuevas funcionalidades
+
+1. Leer requisitos, solución y convenciones existentes antes de elegir estructura.
+2. Definir actor, datos, permisos, abuso esperado y límites del flujo.
+3. Crear únicamente endpoints, DTOs, servicios y entidades requeridos.
+4. Validar input en API y reglas en Application/Domain.
+5. Autorizar la función y el objeto/tenant en backend en todas las rutas afectadas.
+6. Usar consultas parametrizadas y devolver DTOs allowlist.
+7. Añadir pruebas unitarias y de integración/API proporcionales al riesgo.
+8. Revisar secretos, logs, errores, límites de consumo e impacto en el Top 10/API Top 10.
+9. Ejecutar build, pruebas y controles del pipeline afectados.
+10. Documentar desviaciones de seguridad o arquitectura; no tomarlas silenciosamente.
+
+## 14. Directrices para agentes de desarrollo
+
+Al usar este documento como contexto:
+
+1. Inspeccionar primero `.sln`, `.csproj`, `Program.cs`, configuraciones, módulos y pruebas existentes.
+2. Tratar el stack y contratos explícitos como baseline. Si los requisitos chocan con ellos, describir el conflicto y pedir decisión.
+3. Derivar módulos y reglas de requisitos reales; placeholders no son funcionalidades.
+4. No añadir CRUDs, roles, claims, entidades, endpoints o capas sin requisito.
+5. Proteger cada operación en backend; no asumir que una ruta React protegida autoriza una llamada.
+6. Nunca almacenar ni imprimir secretos, credenciales, access tokens, refresh tokens o cookies.
+7. Seguir el flujo de cookie/CSRF de la sección 7 cuando el cliente sea un navegador; no copiar el contrato de autenticación legacy del TMS.
+8. No relajar un control OWASP para hacer pasar una prueba; investigar y documentar una excepción aprobada.
+9. Ejecutar y reportar build, pruebas y análisis aplicables al cambio.
+10. No introducir refactors ajenos a la funcionalidad solicitada.
+
+## 15. Referencias de seguridad
+
+- [OWASP Top 10:2025](https://owasp.org/Top10/2025/)
+- [OWASP API Security Top 10:2023](https://owasp.org/API-Security/editions/2023/en/0x11-t10/)
+- [OWASP ASVS 5.0.0](https://owasp.org/www-project-application-security-verification-standard/)
+- [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
+- [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
+- [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+- [OWASP CSRF Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+- [OWASP .NET Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html)
+
+Este estándar establece un baseline para proyectos nuevos, no define un dominio de negocio ni certifica por sí solo una aplicación. Los requisitos del producto determinan las funcionalidades; toda desviación de seguridad debe ser consciente, justificada y verificable.
