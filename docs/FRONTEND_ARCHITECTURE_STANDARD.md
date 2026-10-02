@@ -1,6 +1,6 @@
-# Arquitectura estándar del Frontend
+# Propuesta técnica base: Frontend
 
-Este documento define el stack, la estructura estándar y las responsabilidades del frontend. También describe la parte del flujo JWT Bearer que implementa la aplicación cliente.
+Este documento sirve como contexto técnico para construir aplicaciones frontend con el stack acordado. Define una estructura de referencia, responsabilidades, autenticación y directrices para agentes de desarrollo. Los nombres `<modulo>` y `<feature>` son placeholders, no funcionalidades que deban crearse automáticamente.
 
 ## 1. Stack tecnológico
 
@@ -13,7 +13,7 @@ Este documento define el stack, la estructura estándar y las responsabilidades 
 - **Cliente HTTP:** Axios mediante un cliente centralizado.
 - **Contenedores:** Docker y Docker Compose.
 
-Las versiones de las dependencias se fijan en `package.json` y `package-lock.json`.
+Este stack es la base tecnológica fija de la propuesta. Las versiones acordadas se fijan en `package.json` y `package-lock.json`; no se cambian sin una decisión explícita del proyecto.
 
 ## 2. Responsabilidades
 
@@ -29,7 +29,7 @@ Las versiones de las dependencias se fijan en `package.json` y `package-lock.jso
 ```text
 frontend/
 ├── Dockerfile
-├── compose.yaml
+├── docker-compose.yaml
 ├── .dockerignore
 ├── .env.example
 ├── package.json
@@ -148,7 +148,7 @@ La página del módulo compone la vista. La lógica específica se distribuye en
 ## 8. Docker y ejecución
 
 - `Dockerfile` incluye etapas de dependencias, compilación y ejecución de producción.
-- `compose.yaml` proporciona el entorno local de desarrollo con hot reload.
+- `docker-compose.yaml` proporciona el entorno local de desarrollo con hot reload.
 - Vite debe escuchar en `0.0.0.0` dentro del contenedor y publicar el puerto `5173`.
 - En producción, los archivos compilados se sirven con un servidor web como Nginx.
 - `.dockerignore` excluye dependencias locales, compilaciones y archivos innecesarios.
@@ -161,3 +161,17 @@ La página del módulo compone la vista. La lógica específica se distribuye en
 3. Consumir endpoints a través de `apiClient.ts` y servicios tipados.
 4. Usar `ProtectedRoute` solo para controlar navegación; proteger la operación correspondiente en el backend.
 5. Mantener access tokens en memoria y no duplicar lógica de sesión dentro de módulos funcionales.
+
+## 10. Directrices para agentes de desarrollo
+
+Al utilizar este documento como contexto para implementar una aplicación:
+
+1. Inspeccionar primero el código, las dependencias y las convenciones existentes; no reemplazar una estructura ya establecida sin necesidad y autorización.
+2. Tratar el stack de la sección 1 como baseline fijo. Si los requisitos explícitos del proyecto entran en conflicto con él, describir el conflicto y pedir una decisión antes de cambiarlo.
+3. Derivar páginas, módulos, rutas, formularios y tipos de los requisitos de negocio proporcionados. No inferir funcionalidades a partir de `<modulo>`, `<feature>` ni otros placeholders.
+4. Implementar únicamente el alcance solicitado; no crear por adelantado pantallas o módulos de ejemplo.
+5. Consumir la API mediante `apiClient.ts` y mantener la autenticación centralizada en el contexto y servicios compartidos.
+6. Mantener secretos fuera del bundle y de las variables `VITE_*`; esas variables son públicas para el navegador.
+7. Probar el build y el comportamiento afectado por cada cambio, sin introducir reorganizaciones ajenas a la tarea.
+
+Este documento es una propuesta arquitectónica, no una especificación de dominio. Los requisitos concretos del producto determinan los modelos, las rutas y el comportamiento funcional.
