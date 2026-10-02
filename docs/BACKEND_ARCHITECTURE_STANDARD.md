@@ -1,6 +1,8 @@
-# Propuesta técnica base: Backend
+# Propuesta técnica base: Backend para MVP
 
-Este documento sirve como contexto técnico para construir backends con el stack acordado. Define una arquitectura modular hexagonal, convenciones de autenticación y directrices para agentes de desarrollo. Los nombres `<modulo>`, `<entidad>` y `<operacion>` son placeholders, no funcionalidades que deban crearse automáticamente.
+Este documento sirve como contexto técnico para construir backends de distintos productos con el stack acordado. Propone un monolito modular NestJS con pocas capas explícitas, adecuado para comenzar un MVP sin anticipar dominios ni reglas de negocio que todavía no se han definido.
+
+Los nombres `<modulo>`, `<entidad>` y `<operacion>` son placeholders estructurales. No representan funcionalidades que deban crearse automáticamente.
 
 ## 1. Stack tecnológico
 
@@ -9,71 +11,25 @@ Este documento sirve como contexto técnico para construir backends con el stack
 - **Lenguaje:** TypeScript.
 - **Transporte HTTP:** API REST sobre HTTP/JSON, usando el adaptador Express predeterminado de NestJS.
 - **Persistencia:** PostgreSQL y Prisma.
-- **Autenticación:** JWT Bearer para los endpoints protegidos y refresh token mediante cookie `HttpOnly`.
+- **Autenticación:** JWT Bearer para endpoints protegidos y refresh token mediante cookie `HttpOnly`.
 - **Contenedores:** Docker y Docker Compose.
 
-Este stack es la base tecnológica fija de la propuesta. Las versiones acordadas se fijan en `package.json` y `package-lock.json`; no se cambian sin una decisión explícita del proyecto. La base PostgreSQL se ejecuta en un contenedor independiente del backend.
+Este stack es la base tecnológica fija de la propuesta. Las versiones acordadas se registran en `package.json` y `package-lock.json`; no se cambian sin una decisión explícita del proyecto. PostgreSQL se ejecuta en un contenedor independiente del backend.
 
-## 2. Objetivos y principios
+## 2. Principios para el MVP
 
-- Organizar el código por módulos de negocio; cada módulo contiene sus propias capas y puertos.
-- Mantener el dominio independiente de NestJS, HTTP, Prisma y PostgreSQL.
-- Hacer que los casos de uso dependan de contratos, no de adaptadores concretos.
-- Mantener Prisma y otras tecnologías externas en adaptadores o infraestructura.
-- Usar un caso de uso explícito por operación relevante, en vez de concentrar muchas operaciones en un servicio monolítico.
-- Mantener los controladores HTTP como adaptadores de entrada delgados.
-- Hacer que las dependencias entre módulos de negocio pasen por contratos explícitos, no por sus implementaciones internas.
-- Validar autenticación y autorización en el backend; los controles de interfaz del frontend no sustituyen esta validación.
+- Mantener un único backend modular organizado por funcionalidades.
+- Crear módulos solo cuando los requisitos definan sus responsabilidades.
+- Usar `controller + service + DTOs` como estructura normal de cada módulo.
+- Permitir que los servicios inyecten `PrismaService` directamente para las operaciones iniciales.
+- Mantener el controller enfocado en HTTP y delegar la lógica de funcionalidad al service.
+- Usar validación en los límites HTTP y guards en las operaciones protegidas.
+- Evitar repositorios genéricos, puertos, capas de dominio y casos de uso independientes cuando no aporten valor concreto.
+- Mantener secretos y configuración sensible fuera del código y del frontend.
 
-## 3. Capas y dirección de dependencias
+Esta propuesta prioriza simplicidad y separación por módulos. No describe una arquitectura hexagonal completa: el acceso directo del service a Prisma se acepta como una decisión pragmática para el MVP.
 
-Cada módulo es una unidad funcional con dominio, aplicación y adaptadores. Los adaptadores traducen entre el exterior y los contratos definidos hacia el interior:
-
-```text
-                         ┌───────────────────────────┐
-                         │ Adaptador de entrada      │
-                         │ HTTP / Controller / DTO   │
-                         └─────────────┬─────────────┘
-                                       │ invoca
-                                       ▼
-                         ┌───────────────────────────┐
-                         │ Aplicación                │
-                         │ Puertos de entrada        │
-                         │ Casos de uso              │
-                         └─────────────┬─────────────┘
-                                       │ usa contratos
-                                       ▼
-                         ┌───────────────────────────┐
-                         │ Dominio                   │
-                         │ Entidades / Reglas        │
-                         │ Puertos de salida         │
-                         └─────────────▲─────────────┘
-                                       │ implementa
-                         ┌─────────────┴─────────────┐
-                         │ Adaptador de salida       │
-                         │ Repositorio Prisma        │
-                         └─────────────┬─────────────┘
-                                       │ usa
-                                       ▼
-                         ┌───────────────────────────┐
-                         │ Infraestructura           │
-                         │ Prisma / PostgreSQL       │
-                         └───────────────────────────┘
-```
-
-La inversión de dependencias significa que el caso de uso conoce el puerto —el contrato que necesita—, pero no la clase que lo implementa. El adaptador Prisma implementa ese puerto y se conecta a la infraestructura de base de datos.
-
-### Reglas por capa
-
-| Capa                   | Puede conocer                                                  | No debe conocer                               |
-| ---------------------- | -------------------------------------------------------------- | --------------------------------------------- |
-| `domain/`            | Entidades, reglas, value objects y puertos del dominio         | NestJS, HTTP, Prisma, PostgreSQL              |
-| `application/`       | Casos de uso, comandos y contratos necesarios para ejecutarlos | Prisma, HTTP, detalles de persistencia        |
-| `adapters/inbound/`  | NestJS, HTTP, DTOs, guards y traducción de solicitudes        | Implementaciones de persistencia directamente |
-| `adapters/outbound/` | Tecnologías externas necesarias para implementar puertos      | Reglas de negocio que pertenecen al dominio   |
-| `infrastructure/`    | Clientes y configuración técnica compartida                  | Casos de uso o reglas de negocio              |
-
-## 4. Estructura del backend
+## 3. Estructura de carpetas
 
 ```text
 backend/
@@ -97,241 +53,177 @@ backend/
     │   ├── pipes/
     │   └── decorators/
     ├── config/
-    ├── infrastructure/
-    │   └── database/
-    │       └── prisma/
-    │           ├── prisma.module.ts
-    │           └── prisma.service.ts
+    ├── database/
+    │   ├── prisma.module.ts
+    │   └── prisma.service.ts
     └── modules/
         ├── auth/
-        ├── <modulo-a>/
-        └── <modulo-b>/
+        │   ├── auth.module.ts
+        │   ├── auth.controller.ts
+        │   ├── auth.service.ts
+        │   ├── dto/
+        │   ├── guards/
+        │   └── strategies/
+        └── <modulo>/
+            ├── <modulo>.module.ts
+            ├── <modulo>.controller.ts
+            ├── <modulo>.service.ts
+            ├── dto/
+            └── <modulo>.service.spec.ts
 ```
 
-Los nombres entre ángulos son placeholders estructurales. Los módulos de negocio se crean únicamente cuando los requisitos del software definan sus responsabilidades. Cada módulo mantiene su propia arquitectura:
+La estructura interna crece según la necesidad. No es obligatorio crear todos los directorios de ejemplo para cada módulo.
+
+## 4. Responsabilidades
+
+| Elemento | Responsabilidad |
+|---|---|
+| `main.ts` | Arranca NestJS y configura prefijo HTTP, CORS, validación global y opciones del servidor. |
+| `app.module.ts` | Compone los módulos de la aplicación y las dependencias compartidas. |
+| `<modulo>.module.ts` | Registra controllers, services y dependencias del módulo. |
+| `<modulo>.controller.ts` | Recibe solicitudes HTTP, valida o transforma la entrada mediante DTOs y delega en el service. |
+| `<modulo>.service.ts` | Implementa las operaciones y reglas de la funcionalidad; puede usar Prisma directamente en el MVP. |
+| `dto/` | Define y valida contratos de entrada y salida del módulo. |
+| `database/` | Expone el cliente compartido de Prisma y su ciclo de vida. |
+| `common/` | Contiene elementos técnicos transversales realmente compartidos, no lógica específica de una funcionalidad. |
+| `config/` | Carga y valida la configuración proveniente del entorno. |
+
+## 5. Flujo normal de una solicitud
 
 ```text
-modules/<modulo>/
-├── domain/
-│   ├── entities/
-│   ├── value-objects/
-│   ├── services/                  # solo lógica propia del dominio
-│   └── ports/
-│       └── outbound/              # contratos que el dominio necesita
-├── application/
-│   ├── ports/
-│   │   └── inbound/               # operaciones ofrecidas por la aplicación
-│   └── use-cases/
-├── adapters/
-│   ├── inbound/
-│   │   └── http/
-│   │       ├── <modulo>.controller.ts
-│   │       └── dto/
-│   └── outbound/
-│       └── persistence/
-│           └── prisma/
-│               └── prisma-<modulo>.repository.ts
-└── <modulo>.module.ts
+HTTP Request
+    ↓
+Controller
+    ↓ DTO validado
+Service
+    ↓ PrismaService
+PostgreSQL
+    ↓
+Service transforma el resultado
+    ↓
+Controller responde HTTP
 ```
 
-La forma concreta de cada módulo puede crecer según sus necesidades. No se crean carpetas vacías o capas sin responsabilidad real.
+El controller no ejecuta consultas Prisma ni concentra reglas de negocio. El service no maneja detalles de transporte HTTP, como cookies o códigos de respuesta, salvo que una decisión de implementación de Nest requiera coordinarse con el adaptador correspondiente.
 
-## 5. Responsabilidades de las áreas compartidas
+### Acceso a datos en el MVP
 
-### `main.ts` y `app.module.ts`
+- Los servicios pueden inyectar `PrismaService` y llamar a Prisma directamente.
+- Las consultas y transacciones quedan dentro del módulo dueño de la funcionalidad.
+- No se añade una capa de repositorios que solo replique llamadas de Prisma.
+- Los modelos de Prisma no se exponen automáticamente como contratos HTTP: usar DTOs o mapeo de respuesta cuando el API necesite un formato distinto.
+- Las operaciones que deben ser atómicas usan transacciones de Prisma dentro del service responsable.
 
-- `main.ts` configura el arranque HTTP, el prefijo global `/api`, CORS, validación global y demás configuración de NestJS.
-- `app.module.ts` compone los módulos funcionales y la infraestructura compartida.
+## 6. Módulos y responsabilidades de negocio
 
-### `common/`
+- Los módulos se derivan de funcionalidades expresadas en los requisitos del producto.
+- Cada módulo posee sus controllers, services y DTOs.
+- Un módulo no importa directamente los services internos de otro módulo. Si aparece una dependencia entre funcionalidades, se evalúa una colaboración explícita a través de los módulos, sin mover prematuramente todo a una capa compartida.
+- No se crea un módulo global para alojar lógica que todavía no tiene un dominio claro.
+- `common/` no se usa como cajón de sastre para helpers de una sola funcionalidad.
 
-Contiene únicamente comportamiento transversal y no específico de un dominio, como filtros HTTP globales, interceptores, pipes y decorators realmente compartidos. No debe convertirse en un cajón de sastre para servicios de negocio, helpers de un módulo o utilidades sin dueño claro.
+Los nombres de `<modulo>` y `<entidad>` se sustituyen por términos del dominio real cuando el producto y sus casos de uso estén especificados.
 
-### `config/`
+## 7. Cuándo añadir más estructura
 
-Carga y valida variables de entorno y configuración técnica. Los secretos se proporcionan desde el entorno y nunca se versionan ni se exponen al frontend.
+La simplicidad del MVP no impide evolucionar. Las abstracciones se añaden cuando resuelven un problema observado:
 
-### `infrastructure/database/prisma/`
+- **Caso de uso independiente:** cuando una operación tiene varios pasos, reglas de negocio complejas, coordinación de dependencias o una responsabilidad que ya no se entiende bien dentro del service.
+- **Dominio explícito:** cuando existen invariantes, transiciones o reglas que conviene modelar independientemente de NestJS y Prisma.
+- **Repositorio o puerto:** cuando se necesita más de una implementación, una frontera clara con una integración externa, o el acoplamiento a Prisma dificulta de forma concreta las pruebas o los cambios.
+- **Adaptador externo:** cuando una funcionalidad integra un proveedor, servicio remoto u otra tecnología sustituible.
 
-- `PrismaService` administra el cliente compartido de Prisma y su ciclo de vida.
-- `PrismaModule` expone ese servicio a los adaptadores de persistencia.
-- El esquema y las migraciones se mantienen en `backend/prisma/`.
-- Los repositorios concretos de cada dominio no se colocan aquí: viven en el adaptador de salida del módulo correspondiente.
-
-## 6. Puertos, adaptadores e inversión de dependencias
-
-### Puerto de salida
-
-Un puerto de salida expresa una necesidad del módulo mediante un contrato propio, sin describir cómo se implementa. Por ejemplo, si una operación requiere persistir una entidad, el módulo declara su propio puerto en `domain/ports/outbound/`. Los nombres y métodos del contrato se derivan del lenguaje y las reglas del dominio real.
-
-El contrato pertenece al módulo que lo necesita. No se crea un repositorio universal compartido solo para evitar declarar puertos específicos.
-
-### Caso de uso
-
-Cada operación relevante se representa con un caso de uso específico, por ejemplo `Crear<Entidad>UseCase` u `<Operacion><Entidad>UseCase`. El caso de uso coordina reglas del dominio y puertos requeridos, pero no conoce HTTP ni ejecuta consultas Prisma.
-
-Por decisión de este proyecto, los casos de uso usan `@Injectable()` de NestJS y los tokens de inyección necesarios. Esto introduce un acoplamiento puntual con NestJS en la configuración de dependencias de `application/`; la lógica del caso de uso y sus contratos siguen dependiendo de puertos, no de adaptadores concretos.
-
-Los casos de uso no deben importar controladores, DTOs HTTP, `PrismaService` ni modelos generados por Prisma. Las clases y los contratos concretos se nombran usando el dominio solicitado para cada aplicación.
-
-### Adaptador de persistencia
-
-El repositorio Prisma de un módulo implementa el puerto de salida definido por ese módulo. Traduce entre el modelo de dominio y el esquema de persistencia; las llamadas a `PrismaService` se limitan a este adaptador.
-
-La traducción en ambos sentidos evita que los modelos generados por Prisma se filtren hacia los casos de uso o las entidades del dominio.
-
-### Composición en NestJS
-
-El módulo Nest del dominio registra el caso de uso y enlaza el token del puerto con el adaptador correspondiente, normalmente mediante `useClass`. El token identifica el contrato; no debe revelar detalles del adaptador en la capa de aplicación.
-
-Esta composición permite sustituir el adaptador de persistencia por un fake, mock u otra implementación sin cambiar la lógica del caso de uso.
-
-## 7. Organización de los casos de uso
-
-Evitar un servicio de módulo que acumule operaciones no relacionadas. Preferir clases específicas, cada una con una responsabilidad identificable. Los nombres se construyen con la acción y el concepto real del dominio, por ejemplo:
-
-```text
-application/use-cases/
-├── crear-<entidad>.use-case.ts
-├── actualizar-<entidad>.use-case.ts
-├── obtener-<entidad>.use-case.ts
-└── listar-<entidades>.use-case.ts
-```
-
-La lista es ilustrativa, no un CRUD obligatorio. Los casos de uso reflejan operaciones que existen en los requisitos y reglas reales; no se generan operaciones vacías ni se asume que toda entidad necesita crear, actualizar, listar y eliminar.
-
-El controller pertenece al adaptador HTTP: transforma DTOs en comandos o parámetros de aplicación, llama al caso de uso y transforma el resultado en una respuesta HTTP. No construye entidades de Prisma ni contiene lógica de negocio.
+La evolución se realiza módulo por módulo. No se requiere crear de antemano `domain/`, `application/`, `adapters/` ni puertos para cada persistencia. No introducir un repositorio genérico como requisito para todos los módulos.
 
 ## 8. Módulo de autenticación
 
-La autenticación también se organiza dentro de `modules/`; no se mantiene como un subsistema paralelo en `src/auth/`:
+La autenticación es un módulo Nest independiente:
 
 ```text
 modules/auth/
-├── domain/
-│   ├── entities/
-│   ├── value-objects/
-│   └── ports/
-│       └── outbound/
-├── application/
-│   ├── ports/
-│   │   └── inbound/
-│   └── use-cases/
-│       ├── login.use-case.ts
-│       ├── refresh-token.use-case.ts
-│       └── logout.use-case.ts
-├── adapters/
-│   ├── inbound/
-│   │   └── http/
-│   │       ├── auth.controller.ts
-│   │       ├── dto/
-│   │       ├── guards/
-│   │       ├── strategies/
-│   │       └── decorators/
-│   └── outbound/
-│       ├── jwt/
-│       ├── password/
-│       └── persistence/
-│           └── prisma/
-│               └── prisma-auth.repository.ts
-└── auth.module.ts
+├── auth.module.ts
+├── auth.controller.ts
+├── auth.service.ts
+├── dto/
+├── guards/
+└── strategies/
 ```
 
-Los guards, strategies, decorators HTTP y componentes específicos de NestJS/Passport se mantienen en el borde de entrada. La emisión de tokens, el hashing de contraseñas y el acceso a persistencia se conectan a la aplicación mediante los puertos correspondientes.
+Los guards y la estrategia JWT protegen endpoints y establecen la identidad autenticada en la solicitud. El módulo implementa el contrato JWT Bearer; no presupone roles, permisos ni atributos de usuario que el producto todavía no haya definido.
 
-### Política JWT y endpoints de referencia
+### Política de tokens y endpoints
 
-- El access token tiene duración limitada y se envía en `Authorization: Bearer <accessToken>`.
-- El refresh token se transmite en una cookie `HttpOnly`, se rota al renovar y puede revocarse en logout.
-- Los secretos de firma y configuración de emisor/audiencia se guardan solo en el backend.
-- Las duraciones y claims definitivos se fijarán al implementar la autenticación.
+- El access token JWT tiene duración limitada y se envía en `Authorization: Bearer <accessToken>`.
+- El refresh token se transmite mediante cookie `HttpOnly`, se rota al renovar y puede revocarse al cerrar sesión.
+- Los secretos de firma y la configuración de emisor/audiencia se quedan exclusivamente en el backend.
+- Las duraciones, claims y modelo de sesión definitivos se fijarán durante la implementación del proyecto.
 
-| Método  | Endpoint              | Responsabilidad                                                      |
-| -------- | --------------------- | -------------------------------------------------------------------- |
-| `POST` | `/api/auth/login`   | Valida credenciales, emite access JWT y establece cookie de refresh. |
-| `POST` | `/api/auth/refresh` | Valida y rota la cookie; devuelve un nuevo access JWT.               |
-| `POST` | `/api/auth/logout`  | Revoca la sesión de refresh y expira la cookie.                     |
-| `GET`  | `/api/auth/me`      | Devuelve la identidad asociada al Bearer token.                      |
+| Método | Endpoint | Responsabilidad |
+|---|---|---|
+| `POST` | `/api/auth/login` | Valida credenciales, devuelve un access token y establece la cookie de refresh. |
+| `POST` | `/api/auth/refresh` | Valida y rota la cookie; devuelve un nuevo access token. |
+| `POST` | `/api/auth/logout` | Revoca la sesión de refresh y expira la cookie. |
+| `GET` | `/api/auth/me` | Devuelve la identidad asociada al Bearer token actual. |
 
 ### Flujo de autenticación
 
-1. El frontend envía credenciales a `POST /api/auth/login`.
-2. El controller valida el DTO y llama al caso de uso de login.
-3. El caso de uso valida la identidad usando los puertos requeridos y solicita la emisión del token mediante su contrato de salida.
-4. Los adaptadores de salida implementan hashing, firma JWT y persistencia de la sesión de refresh.
-5. El backend devuelve el access token y establece la cookie de refresh.
-6. El frontend envía el access token como Bearer en las llamadas protegidas.
-7. Ante un access token expirado, el frontend solicita `POST /api/auth/refresh`; el backend valida y rota el refresh token y emite un nuevo access token.
-8. En logout, el caso de uso revoca la sesión, el adaptador HTTP expira la cookie y el frontend elimina su estado en memoria.
+1. El cliente envía credenciales a `POST /api/auth/login`.
+2. `AuthController` valida el DTO y delega la operación en `AuthService`.
+3. `AuthService` valida las credenciales y gestiona la emisión o renovación de tokens.
+4. `AuthController` devuelve el access token en la respuesta y establece la cookie de refresh.
+5. El frontend mantiene el access token en memoria y lo envía como Bearer en solicitudes protegidas.
+6. Al iniciar la aplicación o al recibir un `401`, el frontend solicita `POST /api/auth/refresh` con credenciales de cookie habilitadas.
+7. Si el refresh es válido, el backend lo rota y devuelve un access token nuevo; si no, responde `401` y el controller expira la cookie.
+8. `POST /api/auth/logout` invalida la sesión de refresh; el controller expira la cookie y el frontend elimina el estado local.
 
-El mecanismo persistente del refresh debe permitir revocación y evitar almacenar el token en claro, por ejemplo guardando una sesión revocable o el hash del token. La autenticación responde `401` ante identidad ausente o inválida; la autorización responde `403` cuando la identidad no puede realizar la operación.
+El mecanismo de refresh debe permitir revocación y evitar almacenar el token en claro. El access token se puede mantener válido hasta su expiración; una sesión de refresh revocada no puede obtener tokens nuevos.
 
 ### Guards, cookies y CORS
 
-- `JwtAuthGuard` y la estrategia JWT validan el access token en rutas protegidas y dejan la identidad autenticada disponible para la solicitud.
+- `JwtAuthGuard` valida el Bearer token en endpoints protegidos.
 - Login y refresh se marcan explícitamente como rutas públicas respecto al guard Bearer.
 - La cookie de refresh usa `HttpOnly`; en producción también `Secure`.
-- `SameSite` se configura según el despliegue; si se requiere contexto cross-site, usar `None; Secure` y protección CSRF apropiada.
-- CORS admite orígenes explícitos y credenciales; no se combina un origen `*` con credenciales.
-- Validar el origen de las solicitudes que usan cookies y limitar `Path`/`Domain` a lo necesario.
+- `SameSite` se configura según el despliegue. Si se necesita contexto cross-site, usar `None; Secure` y protección CSRF apropiada.
+- CORS permite orígenes explícitos y credenciales; no se combina un origen `*` con credenciales.
+- Se valida el origen de solicitudes que usan cookies y se limita `Path`/`Domain` a lo necesario.
+- La ausencia o invalidez de autenticación produce `401`; la falta de autorización produce `403`.
 
-## 9. Módulos de negocio y límites entre dominios
+## 9. Validación, errores y configuración
 
-Cada módulo conserva sus entidades, casos de uso, puertos y adaptadores. Los módulos no importan repositorios ni servicios internos de otros módulos. Si una funcionalidad necesita colaborar con otra, la integración se define mediante un contrato explícito y se mantiene dentro del límite del módulo responsable.
+- Validar DTOs en la frontera HTTP mediante pipes de NestJS.
+- Mantener un formato de errores consistente mediante filtros comunes cuando el proyecto lo requiera.
+- Cargar configuración desde variables de entorno y validar las requeridas durante el arranque.
+- `.env.example` documenta nombres y formatos, nunca valores secretos reales.
+- `DATABASE_URL` y las claves JWT se configuran exclusivamente en el backend.
+- El prefijo global inicial de API es `/api`.
 
-Los límites y nombres de módulos se derivan del lenguaje, las reglas y los requisitos del producto. Los placeholders de esta propuesta ilustran la forma de organizar el código; no determinan los dominios del software que se construya.
+## 10. Pruebas recomendadas para el MVP
 
-## 10. Flujo recomendado para incorporar una funcionalidad
+- Probar servicios y reglas funcionales aisladas, usando mocks de `PrismaService` cuando sea suficiente.
+- Añadir pruebas de integración para consultas o transacciones cuya interacción con PostgreSQL sea relevante.
+- Probar con pruebas end-to-end los contratos HTTP y los flujos críticos de autenticación.
+- No crear una estructura de puertos o repositorios solo para facilitar mocks; introducirla cuando el aislamiento aporte valor claro.
 
-1. Identificar el módulo de dominio responsable.
-2. Modelar entidades, value objects y reglas en `domain/`.
-3. Definir en `domain/ports/outbound/` los contratos externos que el dominio necesita.
-4. Definir en `application/ports/inbound/` las operaciones ofrecidas y crear un caso de uso por operación.
-5. Implementar el adaptador de entrada, normalmente HTTP, con controller y DTOs.
-6. Implementar los adaptadores de salida necesarios, como un repositorio Prisma dentro del módulo.
-7. Registrar los casos de uso y enlazar tokens de puertos a sus implementaciones en `<modulo>.module.ts`.
-8. Probar el dominio y los casos de uso usando implementaciones de prueba de sus puertos; probar los adaptadores por separado.
-
-## 11. Pruebas y checklist de consistencia
-
-- **Dominio:** pruebas unitarias de entidades, value objects y reglas sin levantar NestJS ni Prisma.
-- **Casos de uso:** pruebas unitarias con repositorios u otros puertos simulados.
-- **Adaptadores Prisma:** pruebas de integración para verificar la traducción entre persistencia y dominio.
-- **Adaptadores HTTP:** pruebas de controller o end-to-end para contratos, guards y códigos HTTP.
-
-Antes de considerar un módulo consistente, comprobar que:
-
-- `domain/` no importa NestJS, Prisma, HTTP ni paquetes de PostgreSQL.
-- Los casos de uso dependen de puertos y no llaman directamente a Prisma.
-- Los repositorios Prisma concretos están dentro del adaptador de salida del módulo.
-- Los controllers no contienen reglas de negocio ni acceso a persistencia.
-- Los tokens de Nest conectan puertos con implementaciones en el módulo.
-- `common/` no contiene lógica propia de un dominio.
-- Los guards del backend protegen las operaciones independientemente de la navegación del frontend.
-- Ningún secreto aparece en código, respuestas HTTP, logs ni archivos versionados.
-
-## 12. Docker y configuración
+## 11. Docker y ejecución
 
 - `Dockerfile` incluye etapas de dependencias, build y ejecución de producción.
 - `docker-compose.yaml` proporciona el entorno de desarrollo con hot reload.
 - NestJS escucha en `0.0.0.0:3000` dentro del contenedor y publica el puerto `3000`.
-- PostgreSQL se ejecuta en su contenedor independiente y se conecta al backend mediante la configuración del entorno.
-- `DATABASE_URL` y las claves JWT son configuración exclusiva del backend.
-- `.env.example` documenta variables esperadas sin incluir valores secretos reales; `.env` local no se versiona.
+- PostgreSQL se ejecuta en su contenedor independiente y se conecta al backend mediante configuración de entorno.
+- `.dockerignore` excluye dependencias locales, archivos `.env`, compilaciones y artefactos innecesarios.
 - Las migraciones de Prisma se ejecutan mediante comandos de desarrollo o despliegue según el entorno.
 
-## 13. Directrices para agentes de desarrollo
+## 12. Directrices para agentes de desarrollo
 
 Al utilizar este documento como contexto para construir o modificar un backend:
 
-1. Inspeccionar primero los archivos, dependencias, patrones y límites existentes. No reemplazar una arquitectura funcional sin una necesidad relacionada con la tarea y autorización explícita.
-2. Tratar el stack de la sección 1 como baseline fijo. Si un requerimiento del proyecto entra en conflicto con él, exponer el conflicto y pedir una decisión antes de cambiar tecnología o versiones.
-3. Derivar módulos, entidades, value objects, puertos, casos de uso y endpoints de los requisitos proporcionados. No tratar placeholders ni ejemplos estructurales como requisitos de negocio.
-4. Crear solo los módulos y capas que necesita el alcance solicitado; no generar módulos vacíos ni CRUDs no requeridos.
-5. Mantener las reglas de dominio en `domain/`, la coordinación en casos de uso y la interacción con tecnologías externas en adaptadores o infraestructura.
-6. No permitir que Prisma, DTOs HTTP o modelos de transporte se filtren hacia el dominio o los casos de uso.
-7. Evitar dependencias directas entre implementaciones internas de distintos módulos; definir contratos explícitos cuando exista una colaboración requerida.
-8. Aplicar guards y validaciones en el backend a toda operación protegida. La navegación o visibilidad del frontend nunca basta para autorizar una operación.
-9. Ejecutar las verificaciones y pruebas relacionadas con el cambio, sin introducir refactors ajenos al alcance.
+1. Inspeccionar primero el proyecto, sus dependencias y convenciones. No reemplazar estructura existente sin necesidad y autorización.
+2. Tratar el stack de la sección 1 como baseline fijo. Si un requerimiento entra en conflicto con él, describir el conflicto y pedir una decisión antes de cambiarlo.
+3. Derivar módulos, entidades, endpoints y reglas de los requisitos concretos. Los placeholders son estructurales y no implican funcionalidades de negocio.
+4. Crear solo lo solicitado; no generar módulos, CRUDs, entidades ni capas vacías por anticipado.
+5. Usar `controller + service + DTOs` como patrón por defecto. Añadir casos de uso, dominio explícito, puertos o repositorios únicamente ante una necesidad concreta y localizada.
+6. Mantener consultas y transacciones en el módulo responsable; no crear una capa común de repositorios por convención.
+7. Proteger operaciones en backend y no depender de controles de navegación del frontend.
+8. Ejecutar build y pruebas relevantes para el cambio sin incorporar refactors ajenos al alcance.
 
-Esta propuesta fija límites técnicos y convenciones, no modelos de negocio. Los requisitos del producto determinan qué software se construye; si una instrucción específica contradice este baseline, el agente debe señalar la diferencia en lugar de asumir una decisión silenciosa.
+Esta propuesta fija tecnologías y convenciones de MVP; no define un dominio de negocio. Los requisitos explícitos del producto determinan el software que se construye. Si contradicen esta propuesta, el agente debe señalar el conflicto en vez de tomar una decisión silenciosa.
