@@ -14,6 +14,7 @@ Los nombres `<modulo>` y `<feature>` son placeholders, no funcionalidades que de
 - **Componentes UI:** Ant Design 6.6.5.
 - **Routing:** React Router 7.13.0.
 - **Cliente HTTP:** Axios 1.20.0 mediante cliente(s) centralizados.
+- **Fechas y horas:** Day.js 1.11.23 mediante utilidades compartidas.
 - **Realtime opcional:** `@microsoft/signalr` 10.0.0 solo cuando existan requisitos de tiempo real.
 - **Servidor estático y reverse proxy de producción:** Nginx `1.30.5-alpine`, fijado en la imagen Docker como `nginx:1.30.5-alpine`.
 - **Contenedores:** Docker y Docker Compose; Vite se usa para desarrollo y Nginx para servir el build de producción.
@@ -70,6 +71,7 @@ frontend/
     ├── constants/
     ├── theme/
     └── utils/
+        └── date.ts
 ```
 
 Las pantallas y funcionalidades pueden agruparse por módulo cuando eso facilite mantenimiento. No es obligatorio crear cada carpeta de ejemplo ni mover código existente solo para ajustarlo a esta forma.
@@ -84,6 +86,7 @@ Las pantallas y funcionalidades pueden agruparse por módulo cuando eso facilite
 - `hooks/useAuthorization.ts` y `components/authorization/Can.tsx`: consultan permisos efectivos para rutas, menús y componentes sin duplicar reglas.
 - `services/apiClient.ts`: configura Axios, base URL, Bearer token, CSRF y errores HTTP comunes.
 - `services/authService.ts`: contrato de login, refresh, logout, CSRF y consulta de identidad.
+- `utils/date.ts`: concentra parseo, comparación, serialización y presentación de fechas con Day.js.
 - `ProtectedRoute.tsx`: controla navegación por autenticación/roles/permisos como UX; no es una barrera de seguridad de API.
 - `types/`, `constants/`, `hooks/` y `utils/`: elementos realmente compartidos y libres de secretos.
 
@@ -116,12 +119,23 @@ La página compone la vista; los hooks encapsulan interacciones de UI; los servi
 - Al servir SPA y API en el mismo origen mediante Nginx, no se requiere CORS para ese flujo. Si hay acceso cross-origin explícito, el backend permite solo orígenes exactos y credenciales necesarias; nunca wildcard con credenciales.
 - Usar HTTPS en desarrollo y producción para probar cookies seguras y evitar diferencias entre ambientes.
 
+### 5.1 Fechas y zonas horarias
+
+- Usar Day.js 1.11.23 y centralizar funciones compartidas en `src/utils/date.ts`; evitar parseo/formateo duplicado en pantallas y componentes.
+- Mantener operaciones de calendario con objetos Day.js y serializar en el límite del servicio/API. No depender del timezone local del navegador para reglas de negocio.
+- Intercambiar instantes con el backend como ISO 8601 con zona horaria explícita; usar UTC (`Z`) como formato estándar de salida salvo que el contrato defina otra zona.
+- Tratar fechas sin hora (por ejemplo, cumpleaños o día de vencimiento) como valores civiles `YYYY-MM-DD`. No convertirlas a instantes ni pasarlas por `Date.toISOString()`, porque una conversión de zona podría cambiar el día.
+- Presentar fechas con el locale de la interfaz y la zona horaria definida por el producto/usuario. No inferir la zona de negocio desde la configuración del dispositivo.
+- Cuando los requisitos necesiten conversión entre zonas IANA, configurar los plugins oficiales UTC y Timezone de Day.js; cargar solo los locales requeridos y mantener explícita la zona usada en cada operación.
+- Validar valores de entrada y tratar fechas inválidas explícitamente; no aceptar parseos ambiguos o formatos dependientes del navegador.
+- Usar Day.js para los valores de fecha de Ant Design DatePicker y convertirlos a los formatos del contrato en el servicio correspondiente.
+
 ## 6. Autenticación segura del frontend
 
 ### 6.1 Política de almacenamiento
 
-- **Access token JWT:** solo en memoria (por ejemplo, AuthContext); no guardar en `localStorage`, `sessionStorage`, IndexedDB, cookies legibles por JS ni URL.
-- **Refresh token:** exclusivamente en cookie `HttpOnly` emitida por el backend; JavaScript no lo lee ni lo incluye en JSON.
+- **Access token JWT:** duración de 10 minutos; solo en memoria (por ejemplo, AuthContext); no guardar en `localStorage`, `sessionStorage`, IndexedDB, cookies legibles por JS ni URL.
+- **Refresh token:** secreto opaco, no JWT, exclusivamente en cookie `HttpOnly` emitida por el backend; JavaScript no lo lee ni lo incluye en JSON. El servidor aplica 8 horas de inactividad y 7 días absolutos.
 - **Identidad:** mantener en memoria. Si se guarda preferencia visual, no incluir token, información sensible ni datos que permitan restaurar una sesión.
 - La cookie usa `Secure`, `HttpOnly`, host-only, `Path=/`, `SameSite=Strict` o `Lax` según el flujo y un nombre `__Host-...`. Los atributos los fija el servidor .NET.
 - Cifrar un token de browser-storage con una clave disponible al mismo JavaScript no equivale a protegerlo de XSS; por eso el estándar no permite persistir credenciales en web storage.
@@ -176,6 +190,16 @@ Los roles base de este sistema son `ADMINISTRADOR` y `PROFESIONAL`. Una cuenta p
 - No distribuir condicionales del tipo `user.role === 'ADMINISTRADOR'` por la aplicación. No codificar permisos no acordados ni inferir que Administrador tiene acceso irrestricto a todos los datos.
 - Si el backend devuelve `403`, no reintentar refresh; opcionalmente sincronizar `/api/auth/me` una sola vez si el producto necesita reflejar una revocación de permisos.
 - Cambiar el rol o permiso en el cliente nunca otorga acceso: API .NET aplica RBAC y autorización por recurso en cada operación.
+
+### 6.7 Política de tokens en el cliente
+
+- El backend emite access JWT con expiración de 10 minutos. El frontend lo mantiene en memoria y lo envía solo en `Authorization: Bearer`; no emite, firma ni valida su propia autorización a partir del token.
+- El cliente puede leer `exp` únicamente para UX (por ejemplo, evitar enviar una solicitud con un token evidentemente vencido); la aceptación, claims, firma y autorización se deciden siempre en .NET.
+- El refresh es un secreto opaco en cookie `HttpOnly`, con máximo de 8 horas de inactividad y 7 días absolutos. El frontend no lo recibe en respuestas JSON ni intenta renovarlo en segundo plano sin actividad del usuario.
+- La sesión se restaura al iniciar la aplicación llamando a `/api/auth/refresh`. Durante el uso, `401` puede disparar una renovación compartida y un único reintento; no renovar ante `403` ni mantener sesiones activas con polling de refresh.
+- `POST /api/auth/refresh` rota la cookie y solo devuelve un access token nuevo; el cliente no envía el refresh token en body, query ni headers propios.
+- No transportar access JWT en query string. La excepción técnica de SignalR queda limitada a los hubs y reglas de logging descritos en la sección 9.
+- Logout limpia el access token de memoria; el backend revoca la sesión refresh. Los fallos no autorizan al frontend a conservar localmente una sesión como si siguiera activa.
 
 ## 7. CSRF, XSS y protección del navegador
 
@@ -232,8 +256,9 @@ Los controles de OWASP API Security Top 10 (autorización por objeto/campo/funci
 ## 11. Pruebas y controles de entrega
 
 - **Unitarias:** servicios/hooks de UI, estado de sesión, validación y manejo de errores.
-- **Integración:** Axios/authService con API mockeada de forma realista, CSRF, refresh concurrente y flujo de expiración.
-- **E2E:** login, MFA si aplica, restauración tras reload, guards de ruta y componentes para Administrador, Profesional, roles múltiples y usuario sin permisos, `401`, `403`, logout y vencimiento.
+- **Fechas:** parseo y serialización, cambio de día por zona horaria, límites de día, cambios de horario estacional, fecha bisiesta, locale y valores inválidos.
+- **Integración:** Axios/authService con API mockeada de forma realista, CSRF, refresh concurrente, respuesta con `Cache-Control: no-store` y flujo de expiración.
+- **E2E:** login, MFA si aplica, restauración tras reload, expiración del access token de 10 minutos, sesión idle/absoluta, guards de ruta y componentes para Administrador, Profesional, roles múltiples y usuario sin permisos, `401`, `403` y logout.
 - **Seguridad:** comprobar que tokens no aparecen en local/session storage, URLs, logs o errores; verificar cookie HttpOnly en integración con backend; probar XSS/CSRF y manejo de contenido externo. Intentar llamadas directas a API sin permisos para confirmar que el backend responde `403` aunque el componente esté oculto.
 - **Contenedor/proxy:** construir la imagen de producción; ejecutar `nginx -t`; verificar fallback de rutas, proxy `/api/`, headers, caché, tamaño/timeouts y WebSocket si SignalR está habilitado.
 - Pipeline recomendado: `npm ci`, `npm run lint`, `npm run build`, auditoría de dependencias, secret scanning, análisis estático y DAST según el entorno.

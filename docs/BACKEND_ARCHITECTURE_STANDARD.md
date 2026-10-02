@@ -152,7 +152,7 @@ Contrato propuesto para SPA React + API .NET:
 | `POST` | `/api/auth/forgot-password` | Inicia recuperación sin revelar si la cuenta existe. |
 | `POST` | `/api/auth/reset-password` | Consume un token de recuperación de un solo uso. |
 
-El refresh token no se devuelve en JSON ni se expone a JavaScript. El access token es Bearer, vive poco tiempo y permanece en memoria en el cliente. Las llamadas que usan refresh/logout incluyen cookie y token antifalsificación.
+El refresh token no se devuelve en JSON ni se expone a JavaScript. El access token JWT es Bearer y permanece en memoria en el cliente. Las respuestas de autenticación usan `Cache-Control: no-store`; las llamadas con refresh/logout incluyen cookie y token antifalsificación.
 
 ### 7.2 Secuencia de login
 
@@ -163,8 +163,8 @@ El refresh token no se devuelve en JSON ni se expone a JavaScript. El access tok
 5. Credenciales inválidas, cuenta inexistente o no habilitada producen una respuesta genérica que no revela cuál condición falló. Los detalles internos se registran sin guardar credenciales.
 6. Para cuentas administrativas, cuentas de riesgo y acciones de alto impacto se exige MFA. Si falta el segundo factor, responder con un desafío corto, de un solo uso y sin emitir acceso completo ni refresh cookie.
 7. Tras completar factores, crear una sesión independiente. Generar el refresh secreto con CSPRNG; persistir solo su hash, identificador de familia, expiración, estado y metadatos mínimos de auditoría.
-8. Emitir access JWT corto (baseline configurable de 5–15 minutos), sin datos sensibles; validar algoritmo permitido, firma, issuer, audience, `sub`, `iat` y `exp`.
-9. Responder con el access token y establecer una cookie host-only `__Host-RefreshToken`: `HttpOnly`, `Secure` en todos los despliegues HTTPS, `Path=/`, sin `Domain`, `SameSite=Strict` o `Lax` según los flujos y expiración conforme a la política de sesión.
+8. Emitir access JWT con duración fija de 10 minutos para el baseline, sin datos sensibles; validar algoritmo permitido, firma, issuer, audience y tiempos.
+9. Responder con el access token y establecer una cookie host-only `__Host-RefreshToken`: `HttpOnly`, `Secure` en todos los despliegues HTTPS, `Path=/`, sin `Domain`, `SameSite=Strict` o `Lax` según los flujos y expiración conforme a la política de sesión: 8 horas de inactividad y 7 días absolutos.
 10. La SPA guarda el access token solo en memoria y carga la identidad mediante `/api/auth/me`. El backend sigue verificando permisos en cada petición.
 
 ### 7.3 Renovación, logout y ciclo de vida
@@ -174,8 +174,9 @@ El refresh token no se devuelve en JSON ni se expone a JavaScript. El access tok
 - El frontend comparte una sola renovación concurrente y coordina pestañas para evitar carreras de rotación.
 - Al recibir `401`, intentar refresh una sola vez y reintentar la petición original una sola vez. Un `403` nunca inicia refresh.
 - Logout revoca la sesión actual en servidor y expira la cookie con los mismos atributos; el frontend limpia el estado en memoria.
-- Contraseñas cambiadas/restablecidas y eventos de riesgo invalidan las sesiones afectadas. Definir expiración idle y absoluta según impacto y riesgo.
-- Documentar el intervalo residual de validez de un JWT ya emitido. Para revocación inmediata de acciones de alto riesgo, validar estado/versión de sesión; en otros casos usar expiración corta y revocar refresh.
+- El refresh tiene un vencimiento de 8 horas sin actividad y un máximo absoluto de 7 días desde la creación de la sesión. Cada rotación renueva el límite de inactividad, nunca el absoluto; el servidor también comprueba ambos límites aunque el cliente conserve la cookie.
+- Contraseñas cambiadas/restablecidas y eventos de riesgo invalidan las sesiones afectadas. Administradores usan MFA; cambios de roles/permisos y operaciones sensibles exigen reautenticación/MFA según la política.
+- Tras un logout normal, un access JWT ya emitido puede seguir aceptándose hasta su expiración (10 minutos desde emisión, más el margen máximo de reloj de 30 segundos). Las operaciones administrativas/críticas comprueban además el estado `sid` y la versión vigente de autorización para aplicar revocaciones inmediatas.
 - No vincular rígidamente cada sesión a IP o User-Agent; usarlos solo como señales de riesgo, evitando falsos positivos por redes móviles/proxies.
 
 ### 7.4 Contraseñas, MFA y recuperación
@@ -226,6 +227,39 @@ Completarla cuando los requisitos funcionales definan acciones y alcance de dato
 
 La matriz no reemplaza las comprobaciones de propiedad/tenant. Un permiso funcional permite intentar la operación; cada recurso todavía debe estar dentro del ámbito autorizado del usuario.
 
+### 7.7 Política de emisión y validación de tokens
+
+#### Access JWT
+
+- Para access JWT emitidos localmente, la duración exacta del baseline es **10 minutos** para todos los roles. No extenderla por actividad. Cualquier duración distinta requiere decisión documentada según el riesgo del proyecto. Si el proveedor OIDC controla la duración, configurarla a 10 minutos cuando sea posible; documentar cualquier desviación.
+- Para tokens emitidos localmente, firmar con **RS256 y llave RSA de al menos 3072 bits**. Mantener la llave privada en un secret manager/KMS/HSM y distribuir solo material público a validadores. Si se usa un proveedor OIDC, validar sus llaves publicadas por discovery/JWKS y permitir únicamente los algoritmos acordados con ese proveedor.
+- Incluir `kid` en el header para identificar la llave. Para access tokens emitidos localmente, usar `typ=at+jwt`; con OIDC, validar el tipo/perfil especificado por el proveedor. No aceptar `alg=none`, algoritmos no configurados ni confundir tokens de ID, refresh o acceso.
+- Claims mínimos para access JWT emitidos localmente (OIDC debe cumplir el perfil de claims del proveedor seleccionado):
+
+  | Claim | Uso |
+  |---|---|
+  | `iss` | Issuer configurado y confiable. |
+  | `aud` | API destinataria explícita. |
+  | `sub` | Identificador estable del usuario, no un dato mutable de perfil. |
+  | `client_id` | Identificador registrado de la SPA/cliente que inició el flujo; no es un secreto ni autentica por sí solo al cliente público. |
+  | `iat`, `nbf`, `exp` | Instantes UTC de emisión, inicio de validez y expiración. |
+  | `jti` | Identificador único del token para correlación/auditoría; por sí solo no revoca el JWT. |
+  | `sid` | Identificador de la sesión revocable asociada al refresh token. |
+  | `authz_ver` (si se usa) | Versión de autorización del usuario/sesión para detectar cambios en operaciones que exigen revocación inmediata. |
+
+- No incluir email, información personal, `roleCodes` ni arrays `permissionCodes` en access JWT emitidos localmente. Las policies consultan roles/permisos actuales en la fuente de autorización o en una caché invalidable; `/api/auth/me` los entrega a la UI como snapshot, no como autorización.
+- Validar firma, algoritmo allowlist, `iss`, `aud`, `sub`, `client_id` permitido, `iat`, `nbf`, `exp`, tipo de token y forma esperada de claims según el perfil de token; rechazar tokens con duración local solicitada mayor a 10 minutos o tiempos incoherentes. Configurar `ClockSkew` a un máximo de 30 segundos (o menor si la sincronización de relojes lo permite); no conservar el default permisivo de varios minutos.
+- Rotar llaves de firma con `kid`. Durante el cambio, aceptar la llave pública anterior solo hasta que hayan expirado los access tokens emitidos con ella más el margen de reloj; retirar luego la llave antigua. Nunca registrar tokens completos ni llaves.
+- En uso normal, el access JWT local expira a los 10 minutos como máximo. Para logout-all, suspensión de cuenta, cambio de credenciales o cambios de permisos que requieran efecto inmediato, validar `sid`/`authz_ver` contra estado vigente o caché distribuida invalidable. La API falla cerrada para esas operaciones si no puede comprobar su estado de revocación.
+
+#### Refresh token y sesión
+
+- El refresh **no es JWT**: es un secreto opaco aleatorio generado con CSPRNG (al menos 256 bits), transmitido solo en `__Host-RefreshToken` y persistido solo como hash/verificador. Un hash rápido como SHA-256 es apropiado para este secreto aleatorio de alta entropía; no usarlo para contraseñas.
+- Ventana del baseline: 8 horas de inactividad y 7 días absolutos. Al renovar, verificar y actualizar ambos límites, rotar el secreto y establecer la cookie con vencimiento no mayor que el límite absoluto.
+- Guardar identificador de sesión/familia, hash actual del refresh, creación, último uso, expiración idle/absoluta y revocación. Una reutilización de un refresh ya rotado revoca su familia y genera un evento de seguridad.
+- Cada sesión de dispositivo puede revocarse por separado; logout-all revoca todas las sesiones. Nunca extender una sesión más allá del límite absoluto mediante refresh repetido.
+- Comparar/hash de refresh tokens nunca se registra en logs junto con el token recibido. Login/refresh/logout y recuperación devuelven `Cache-Control: no-store`.
+
 ## 8. Baseline de seguridad OWASP Top 10:2025
 
 | Categoría | Requisitos de arquitectura y desarrollo |
@@ -273,7 +307,9 @@ Estructurar pruebas por frontera, sin forzar repositorios solo para facilitar mo
 - **Unitarias:** invariantes/reglas, autorización de aplicación, transiciones y validadores.
 - **Integración:** EF Core/PostgreSQL, transacciones, restricciones, filtros por tenant y rotación de sesión.
 - **API/end-to-end:** status codes, DTOs, headers/cookies, CORS/CSRF y flujos de autenticación.
-- **Seguridad:** matriz RBAC (Administrador, Profesional, múltiples roles y sin permisos), BOLA, permisos por función/propiedad, inyección, enumeración, rate limit, reset, MFA, refresh replay, logout y expiraciones.
+- **JWT:** algoritmo/firma no permitidos, issuer/audience/cliente/tipo incorrectos, claims obligatorios ausentes, duración superior a 10 minutos, claims PII/roles/permisos no permitidos, `nbf`/`exp`, margen de reloj, `kid`, rotación de llaves y `sid`/`authz_ver` revocados.
+- **Sesiones:** límites de 8 horas de inactividad y 7 días absolutos, rotación, reuse/replay, concurrencia, revocación por sesión y global, flags de cookie y CSRF.
+- **Autorización/seguridad:** matriz RBAC (Administrador, Profesional, múltiples roles y sin permisos), BOLA, permisos por función/propiedad, inyección, enumeración, rate limit, reset y MFA.
 
 Gates sugeridos en CI/CD: `dotnet restore`, `dotnet build -c Release`, `dotnet test`, análisis estático, escaneo de secretos, análisis de vulnerabilidades NuGet, construcción y escaneo de imagen, SBOM y DAST (por ejemplo OWASP ZAP) según el entorno. No liberar con hallazgos críticos/altos sin remediar o aceptar el riesgo de forma explícita, con responsable y vencimiento.
 
@@ -324,5 +360,7 @@ Al usar este documento como contexto:
 - [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
 - [OWASP CSRF Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
 - [OWASP .NET Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html)
+- [RFC 8725: JSON Web Token Best Current Practices](https://www.rfc-editor.org/rfc/rfc8725)
+- [RFC 9068: JWT Profile for OAuth 2.0 Access Tokens](https://www.rfc-editor.org/rfc/rfc9068)
 
 Este estándar establece un baseline para proyectos nuevos, no define un dominio de negocio ni certifica por sí solo una aplicación. Los requisitos del producto determinan las funcionalidades; toda desviación de seguridad debe ser consciente, justificada y verificable.
