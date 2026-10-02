@@ -15,7 +15,8 @@ Los nombres `<modulo>` y `<feature>` son placeholders, no funcionalidades que de
 - **Routing:** React Router 7.13.0.
 - **Cliente HTTP:** Axios 1.20.0 mediante cliente(s) centralizados.
 - **Realtime opcional:** `@microsoft/signalr` 10.0.0 solo cuando existan requisitos de tiempo real.
-- **Contenedores:** Docker y Docker Compose según necesidades de desarrollo/despliegue.
+- **Servidor estático y reverse proxy de producción:** Nginx `1.30.5-alpine`, fijado en la imagen Docker como `nginx:1.30.5-alpine`.
+- **Contenedores:** Docker y Docker Compose; Vite se usa para desarrollo y Nginx para servir el build de producción.
 
 Las versiones indicadas son el baseline acordado para nuevos proyectos. Node.js 24 satisface los requisitos de Vite 8. Fijar la versión Node (por ejemplo `.nvmrc`/`engines`), usar versiones compatibles entre sí y conservar `package-lock.json`. Las actualizaciones de dependencias se hacen deliberadamente y se revisan con análisis de vulnerabilidades.
 
@@ -34,6 +35,7 @@ Las versiones indicadas son el baseline acordado para nuevos proyectos. Node.js 
 ```text
 frontend/
 ├── Dockerfile
+├── nginx.conf
 ├── docker-compose.yaml
 ├── .dockerignore
 ├── .env.example
@@ -99,10 +101,13 @@ La página compone la vista; los hooks encapsulan interacciones de UI; los servi
 - `/login` y los flujos de recuperación/MFA son rutas públicas cuando estén requeridos.
 - Las rutas privadas usan `ProtectedRoute` para UX, considerando estados `loading`, `authenticated` y `unauthenticated`.
 - Los permisos que se usen para menús o botones son indicativos. Ante `403`, mostrar denegación apropiada; no asumir que ocultar un botón protege el endpoint.
-- `VITE_API_URL` contiene una URL pública de API, por ejemplo `https://localhost:5001`; no contiene secretos ni credenciales.
+- Por defecto el navegador consume la API en el mismo origen mediante `/api`; Nginx reenvía ese path al backend .NET.
+- `API_PROXY_URL` configura en tiempo de ejecución el upstream interno de Nginx, por ejemplo `http://api:5000`; no es un secreto y no se incluye en el bundle.
+- `VITE_API_URL` solo se define cuando un despliegue necesita una URL pública directa distinta; nunca contiene secretos ni credenciales.
 - El servicio normaliza el prefijo `/api` en un solo sitio. No duplicar prefijos entre `.env` y cada endpoint.
+- Durante desarrollo, Vite puede proxyar `/api` al backend para conservar una URL de navegador equivalente a producción.
 - El cliente centralizado aplica timeout razonable, `Authorization: Bearer` solo cuando hay access token en memoria, CSRF header cuando corresponda y mapeo estable de errores.
-- El backend habilita CORS para orígenes específicos y credenciales solo para los endpoints de autenticación con cookies. No permitir wildcard con credenciales.
+- Al servir SPA y API en el mismo origen mediante Nginx, no se requiere CORS para ese flujo. Si hay acceso cross-origin explícito, el backend permite solo orígenes exactos y credenciales necesarias; nunca wildcard con credenciales.
 - Usar HTTPS en desarrollo y producción para probar cookies seguras y evitar diferencias entre ambientes.
 
 ## 6. Autenticación segura del frontend
@@ -187,13 +192,20 @@ Los controles de OWASP API Security Top 10 (autorización por objeto/campo/funci
 
 ## 10. Docker, build y configuración
 
-- `Dockerfile` multi-stage para build y servicio web estático en producción (por ejemplo Nginx u otro servidor configurado para SPA); no ejecutar el servidor Vite de desarrollo en producción.
-- `docker-compose.yaml` ofrece desarrollo local con hot reload solo en perfil de desarrollo.
-- Vite escucha en `0.0.0.0` dentro del contenedor y publica el puerto de desarrollo acordado (la referencia TMS usa 5173).
+- **Producción usa Nginx como baseline.** El `Dockerfile` multi-stage usa Node.js 24 para instalar dependencias y compilar React; la etapa final parte de `nginx:1.30.5-alpine`, copia `dist/` y la configuración Nginx, y no incluye Node/Vite en runtime.
+- Nginx escucha en el puerto `8080`; Docker Compose publica el puerto elegido por el despliegue (la referencia TMS usa `8080:8080`).
+- `nginx.conf` define el servidor estático y el reverse proxy:
+  - `location /` entrega los archivos y utiliza fallback a `/index.html` para rutas de React Router.
+  - `location /api/` reenvía solicitudes a `API_PROXY_URL`, configurado con DNS/puerto interno del backend .NET; conserva headers necesarios de autenticación, antiforgery y proxy.
+  - Si se usa SignalR, habilita `Upgrade`/`Connection` para WebSocket en el upstream correspondiente y define timeouts razonables.
+- El proxy de API no debe cachear respuestas autenticadas. Las respuestas de autenticación y contenido privado usan `Cache-Control: no-store`.
+- Los assets con hash pueden usar caché larga e `immutable`; `index.html` se sirve sin caché prolongada para que los despliegues nuevos entren en vigor.
+- Configurar compresión y headers de seguridad acordes con la aplicación, incluyendo `X-Content-Type-Options`, `Referrer-Policy`, protección contra framing y CSP. HSTS se añade en el punto que termina HTTPS: Nginx si termina TLS o el ingress/load balancer si termina TLS antes del contenedor.
+- Los límites de solicitudes de Nginx pueden servir como defensa de borde y deben ajustarse a los flujos reales; no reemplazan el rate limiting y la autorización en ASP.NET.
+- El contenedor de producción se ejecuta con privilegios mínimos y capacidades reducidas cuando la imagen/configuración lo permita; los directorios temporales necesarios se declaran explícitamente si el filesystem es de solo lectura.
+- `docker-compose.yaml` mantiene desarrollo con hot reload en perfil de desarrollo; Vite escucha en `0.0.0.0` y publica el puerto de desarrollo acordado (la referencia TMS usa `5173`). El servicio productivo se valida con el build estático servido por Nginx.
 - `.dockerignore` excluye `node_modules`, `dist`, `.env`, logs y artefactos locales.
-- `.env.example` documenta URL pública y configuración no sensible; `.env` local no se versiona.
-- El servidor de estáticos configura fallback de rutas React, HTTPS en despliegue y headers como CSP, HSTS, `X-Content-Type-Options` y `Referrer-Policy` de acuerdo con el hosting.
-- Configurar `Cache-Control: no-store` para respuestas de autenticación y evitar cache/CDN de contenido privado.
+- `.env.example` documenta `API_PROXY_URL` y configuración pública no sensible; `.env` local no se versiona. Nunca introducir secretos en `VITE_*` porque forman parte del bundle.
 
 ## 11. Pruebas y controles de entrega
 
@@ -201,6 +213,7 @@ Los controles de OWASP API Security Top 10 (autorización por objeto/campo/funci
 - **Integración:** Axios/authService con API mockeada de forma realista, CSRF, refresh concurrente y flujo de expiración.
 - **E2E:** login, MFA si aplica, restauración tras reload, rutas protegidas, `401`, `403`, logout y vencimiento.
 - **Seguridad:** comprobar que tokens no aparecen en local/session storage, URLs, logs o errores; verificar cookie HttpOnly en integración con backend; probar XSS/CSRF y manejo de contenido externo.
+- **Contenedor/proxy:** construir la imagen de producción; ejecutar `nginx -t`; verificar fallback de rutas, proxy `/api/`, headers, caché, tamaño/timeouts y WebSocket si SignalR está habilitado.
 - Pipeline recomendado: `npm ci`, `npm run lint`, `npm run build`, auditoría de dependencias, secret scanning, análisis estático y DAST según el entorno.
 - No aprobar vulnerabilidades críticas/altas sin corregirlas o registrar aceptación explícita del riesgo, responsable y vencimiento.
 
