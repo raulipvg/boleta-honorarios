@@ -1,6 +1,6 @@
 # PRD — Gestión de ingresos por honorarios para profesionales de la salud
 
-**Versión:** 0.2
+**Versión:** 0.4
 **Alcance:** Sistema público
 **Estado:** Definición inicial de producto
 
@@ -62,14 +62,14 @@ Profesional de la salud que:
 
 El sistema contempla los roles base `ADMINISTRADOR` y `PROFESIONAL`. Una cuenta puede tener varios roles, de acuerdo con el estándar de arquitectura.
 
-El `ADMINISTRADOR` tiene acceso total al sistema y a los datos de todos los profesionales. El `PROFESIONAL` solo puede consultar y modificar su propia información: perfil profesional, relaciones con instituciones, tarifas horarias, períodos y registros de horas. La autorización se aplica en backend, incluso si se solicita un recurso directamente por su identificador.
+El `ADMINISTRADOR` tiene acceso de lectura a los datos de todos los profesionales y acceso total al resto del sistema. El `PROFESIONAL` solo puede consultar y modificar su propia información: perfil profesional, relaciones con instituciones, tarifas horarias propias, períodos y registros de horas. La autorización se aplica en backend, incluso si se solicita un recurso directamente por su identificador. Solo el profesional propietario puede crear nuevas versiones de su tarifa horaria; el Administrador no puede hacerlo por él.
 
-Las instituciones públicas y la tasa anual de retención son configuraciones compartidas: `PROFESIONAL` puede consultarlas en modo lectura, pero no modificarlas. Las tarifas horarias son personales por relación profesional-institución y no son visibles entre profesionales.
+Las instituciones públicas y la tasa anual de retención son parámetros compartidos: `PROFESIONAL` puede consultarlos en modo lectura. El catálogo de instituciones lo administra `ADMINISTRADOR`; la tabla legal de retención se carga mediante configuración controlada (seed/migración), no se edita desde la aplicación. Las tarifas horarias son personales por relación profesional-institución y no son visibles entre profesionales.
 
 | Rol               | Alcance                                                                                                                                                                                                      |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `PROFESIONAL`   | Gestiona su perfil, relaciones y tarifas propias, períodos y horas propias. Puede leer el catálogo público y la tasa anual común. No consulta datos personales ni financieros de otros profesionales.    |
-| `ADMINISTRADOR` | Acceso total a datos y configuración del sistema, incluyendo profesionales, tarifas, períodos, horas y tasas anuales. Sus consultas/modificaciones de información personal y financiera quedan auditadas. |
+| `ADMINISTRADOR` | Puede consultar los datos de todos los profesionales y administrar las demás funciones y configuraciones del sistema. No puede crear ni modificar tarifas horarias personales; sus consultas y demás modificaciones de información personal/financiera quedan auditadas. La tasa legal global se actualiza mediante configuración controlada. |
 
 ## 5. Alcance inicial
 
@@ -107,7 +107,7 @@ Cada relación profesional-institución puede tener un valor hora por año. Por 
 | Tucapel        | 2026 |                     $31.488 |
 | Lorenzo Arenas | 2026 |                     $28.757 |
 
-El valor no se duplica en cada registro de horas. Es un dato privado de la relación profesional-institución: un profesional no puede consultar la tarifa de otro. Los valores de años/versiones anteriores deben conservarse para consultar períodos históricos.
+El valor no se duplica en cada registro de horas. Es un dato privado de la relación profesional-institución: un profesional no puede consultar la tarifa de otro. Solo el profesional propietario puede crear una tarifa o una nueva versión; el Administrador tiene lectura global, pero no puede crearla ni modificarla. Los valores de años/versiones anteriores se conservan para consultar períodos históricos.
 
 ### 6.5 Período mensual
 
@@ -134,7 +134,7 @@ Para cada institución dentro de un período:
 ```text
 Horas totales = SUM(registros enteros de horas)
 Ingreso bruto CLP = Horas totales × Valor hora anual CLP
-Retención sin redondear = Ingreso bruto CLP × Tasa anual común / 100
+Retención sin redondear = Ingreso bruto CLP × PERIODO_MENSUAL.retencion_porcentaje_aplicado / 100
 Retención institucional CLP = redondear Retención sin redondear al peso más cercano
 Líquido institucional CLP = Ingreso bruto CLP − Retención institucional CLP
 ```
@@ -149,15 +149,15 @@ Todos los montos se expresan en pesos chilenos (**CLP**, sin decimales) y se alm
 
 ### 8.1 Valor hora
 
-El valor hora se consulta por relación profesional-institución y año/version. Así, septiembre de 2026 continúa usando la versión de tarifa que tenía aplicada aunque se publique otra versión para períodos posteriores.
+El valor hora se consulta por relación profesional-institución y año/version. Solo el profesional propietario puede crear una tarifa o una nueva versión; el `ADMINISTRADOR` puede consultarla, pero no crearla ni modificarla. Así, septiembre de 2026 continúa usando la tarifa que tenía aplicada aunque el profesional publique otra versión para períodos posteriores.
 
 ### 8.2 Retención de honorarios
 
-La tasa de retención es **global y común a todos los profesionales**, se administra por año/version y se selecciona según el período. No se hardcodea en frontend ni en lógica de negocio. El profesional puede consultar la tasa aplicable en modo lectura; solo el `ADMINISTRADOR` puede modificar la configuración. El PRD incluye como ejemplo 15,25 % para 2026 y 16,00 % para 2027; esos valores deben validarse antes de configurarlos como oficiales.
+La tasa de retención de boletas de honorarios es **global y común a todos los profesionales**, con un parámetro por año en `RETENCION_BOLETA_HONORARIOS`. La tabla no pertenece a un usuario y no usa versiones de fila. Sus valores se cargan o corrigen mediante seeds/migraciones controladas, no desde la UI. Ambos roles pueden consultarla; ningún usuario la modifica desde la aplicación. El PRD incluye como ejemplo 15,25 % para 2026 y 16,00 % para 2027; esos valores deben validarse antes de cargarlos como oficiales.
 
 ### 8.3 Conservación histórica
 
-Las consultas históricas conservan las reglas aplicadas a su período. Cada `PERIODO_INSTITUCION` referencia la versión exacta del valor hora utilizada y cada `PERIODO_MENSUAL` referencia la versión exacta de la tasa de retención utilizada. Las versiones referenciadas no se editan en sitio: una corrección crea una versión nueva para períodos futuros. Los períodos existentes no se recalculan silenciosamente; cualquier recálculo histórico requiere una operación explícita y auditada.
+Las consultas históricas conservan las reglas aplicadas a su período. Cada `PERIODO_INSTITUCION` referencia la versión exacta del valor hora utilizada y cada `PERIODO_MENSUAL` guarda un snapshot de `retencion_porcentaje_aplicado`. Una corrección de tarifa crea una versión nueva; una corrección legal de la tasa global se carga mediante configuración controlada. En ambos casos, los períodos existentes conservan los valores aplicados y los períodos nuevos usan la configuración vigente. No se recalculan períodos históricos silenciosamente; cualquier recálculo requiere una operación explícita y auditada.
 
 ## 9. Workspace mensual
 
@@ -241,8 +241,9 @@ Agregar, editar o eliminar horas actualiza inmediatamente las horas e importes v
 | HU-11 | Como profesional, quiero ver el resumen consolidado del mes.                                                                         |
 | HU-12 | Como profesional, quiero consultar períodos anteriores sin alterar sus cálculos históricos.                                       |
 | HU-13 | Como profesional, quiero que mis períodos, tarifas y horas sean visibles solo para mí y para administradores autorizados.          |
-| HU-14 | Como administrador, quiero administrar y consultar todos los datos y configuraciones del sistema.                                    |
+| HU-14 | Como administrador, quiero consultar los datos de todos los profesionales y administrar el sistema, sin crear tarifas horarias en su nombre. |
 | HU-15 | Como profesional, quiero consultar la tasa de retención anual común sin poder modificarla.                                         |
+| HU-16 | Como profesional, quiero crear o corregir únicamente las tarifas de mis propias relaciones con instituciones.                         |
 
 ## 13. Requisitos funcionales
 
@@ -250,8 +251,8 @@ Agregar, editar o eliminar horas actualiza inmediatamente las horas e importes v
 | ----- | ---------------------------------------------------------------------------------------------------------------------- |
 | RF-01 | Crear y administrar instituciones públicas.                                                                           |
 | RF-02 | Asociar instituciones al profesional.                                                                                  |
-| RF-03 | Definir el valor hora por relación profesional-institución y año.                                                   |
-| RF-04 | Administrar la tasa de retención por año.                                                                            |
+| RF-03 | Permitir que cada profesional defina/versione el valor hora de sus relaciones por año; Administrador tiene lectura, no escritura. |
+| RF-04 | Aplicar la tasa legal común del año del período desde configuración controlada.                                       |
 | RF-05 | Acceder a períodos mensuales.                                                                                         |
 | RF-06 | Asociar instituciones participantes a un período.                                                                     |
 | RF-07 | Registrar libremente horas sin requerir fecha.                                                                         |
@@ -264,9 +265,9 @@ Agregar, editar o eliminar horas actualiza inmediatamente las horas e importes v
 | RF-14 | Calcular el consolidado mensual.                                                                                       |
 | RF-15 | Consultar períodos históricos.                                                                                       |
 | RF-16 | Navegar rápidamente entre meses.                                                                                      |
-| RF-17 | Aislar en backend los datos por profesional y permitir acceso global al rol`ADMINISTRADOR`.                          |
-| RF-18 | Permitir consulta de solo lectura de la tasa anual común para`PROFESIONAL`; administración para `ADMINISTRADOR`. |
-| RF-19 | Conservar la versión de tarifa y retención aplicada a cada período.                                                 |
+| RF-17 | Aislar en backend los datos por profesional; Administrador consulta todos, con escritura de tarifas reservada al propietario. |
+| RF-18 | Exponer la tasa anual común en modo lectura; no permitir editarla desde la aplicación.                                  |
+| RF-19 | Conservar la versión de tarifa y el snapshot de la tasa aplicada a cada período.                                       |
 
 ## 14. Criterios de aceptación
 
@@ -292,7 +293,7 @@ Un período de diciembre de 2026 utiliza la tarifa y tasa de 2026; enero de 2027
 
 ### CA-06 — Aislamiento por profesional
 
-Dado que dos profesionales tienen períodos, tarifas y horas distintas, un usuario con rol `PROFESIONAL` solo obtiene y modifica sus propios datos. Una solicitud directa por el identificador de un recurso de otro profesional no devuelve su contenido ni permite modificarlo. Un `ADMINISTRADOR` puede acceder a los datos de todos.
+Dado que dos profesionales tienen períodos, tarifas y horas distintas, un usuario con rol `PROFESIONAL` solo obtiene y modifica sus propios datos. Una solicitud directa por el identificador de un recurso de otro profesional no devuelve su contenido ni permite modificarlo. Un `ADMINISTRADOR` puede consultar los datos de todos, pero no crear ni modificar tarifas horarias pertenecientes a profesionales.
 
 ### CA-07 — Horas enteras
 
@@ -304,11 +305,15 @@ Con tarifa de $31.488 CLP/h, 42 horas y tasa de 15,25 %, el bruto es $1.322.496,
 
 ### CA-09 — Retención global de solo lectura
 
-Una versión anual de retención tiene el mismo porcentaje para todos los profesionales durante su vigencia. El profesional puede consultarla, pero solo el administrador puede modificarla.
+La tasa anual común puede consultarse en modo lectura. No se puede modificar desde la aplicación; se actualiza mediante configuración controlada. Cada período conserva la tasa que usó.
 
 ### CA-10 — Conservación de versiones
 
-Si se publica una nueva versión de una tarifa o tasa, los períodos existentes conservan la versión que aplicaron y los períodos nuevos usan la versión vigente. Una corrección no altera silenciosamente cálculos históricos.
+Si se publica una nueva versión de tarifa o se corrige la tasa global mediante configuración controlada, los períodos existentes conservan el valor aplicado en su snapshot y los períodos nuevos usan la configuración vigente. Una corrección no altera silenciosamente cálculos históricos.
+
+### CA-11 — Propiedad de la tarifa horaria
+
+El profesional propietario puede crear una tarifa y publicar una nueva versión solo para su relación con la institución. Otro profesional no puede consultar ni modificar esa tarifa; el `ADMINISTRADOR` puede consultarla, pero no crearla, editarla ni versionarla.
 
 ## 15. Pantallas del MVP
 
@@ -343,63 +348,208 @@ La estructura podrá habilitar posteriormente:
 
 Estas métricas no amplían por sí mismas el alcance del MVP.
 
-## 18. Diagrama relacional conceptual
+## 18. Diagrama relacional DBML
 
-El siguiente ERD es la base relacional del MVP. Define relaciones y reglas de integridad conceptuales; los nombres finales y el DDL se concretan durante el diseño físico.
+El siguiente modelo está expresado en **DBML**, listo para pegar en [dbdiagram.io](https://dbdiagram.io/). Mantiene las relaciones de dominio y propiedad sin tablas relacionales de permisos ni de eventos de auditoría.
 
-```mermaid
-erDiagram
-    USUARIO ||--o| PROFESIONAL : perfil
-    USUARIO ||--o{ USUARIO_ROL : asignado
-    ROL ||--o{ USUARIO_ROL : incluye
-    ROL ||--o{ ROL_PERMISO : concede
-    PERMISO ||--o{ ROL_PERMISO : catalogo
+```dbml
+Project gestion_ingresos_honorarios {
+  database_type: 'PostgreSQL'
+  Note: 'ADMINISTRADOR tiene lectura global; solo el PROFESIONAL propietario escribe su tarifa. PROFESIONAL accede solo a sus datos propios.'
+}
 
-    PROFESIONAL ||--o{ PROFESIONAL_INSTITUCION : vincula
-    INSTITUCION_PUBLICA ||--o{ PROFESIONAL_INSTITUCION : agrupa
-    PROFESIONAL_INSTITUCION ||--o{ TARIFA_HORA_ANUAL_VERSION : tiene
+Table usuarios {
+  id uuid [pk]
+  identity_subject varchar(255) [not null, unique]
+  activo boolean [not null, default: true]
+  created_at timestamptz [not null]
+}
 
-    PROFESIONAL ||--o{ PERIODO_MENSUAL : propietario
-    TASA_RETENCION_ANUAL_VERSION ||--o{ PERIODO_MENSUAL : aplicada
-    PERIODO_MENSUAL ||--o{ PERIODO_INSTITUCION : incluye
-    PROFESIONAL_INSTITUCION ||--o{ PERIODO_INSTITUCION : relacion_seleccionada
-    TARIFA_HORA_ANUAL_VERSION ||--o{ PERIODO_INSTITUCION : aplicada
-    PERIODO_INSTITUCION ||--o{ REGISTRO_HORA : contiene
+Table profesionales {
+  id uuid [pk]
+  usuario_id uuid [not null, unique]
+  nombre varchar(200) [not null]
+  created_at timestamptz [not null]
+}
 
-    USUARIO ||--o{ SESION_AUTH : mantiene
-    USUARIO ||--o{ EVENTO_AUDITORIA : actor
+Table roles {
+  id uuid [pk]
+  codigo varchar(50) [not null, unique, note: 'ADMINISTRADOR o PROFESIONAL']
+  nombre varchar(100) [not null]
+}
+
+Table usuarios_roles {
+  usuario_id uuid [not null]
+  rol_id uuid [not null]
+  asignado_at timestamptz [not null]
+
+  indexes {
+    (usuario_id, rol_id) [pk]
+  }
+}
+
+Table instituciones_publicas {
+  id uuid [pk]
+  nombre varchar(200) [not null]
+  activa boolean [not null, default: true]
+  created_at timestamptz [not null]
+}
+
+Table profesionales_instituciones {
+  id uuid [pk]
+  profesional_id uuid [not null]
+  institucion_publica_id uuid [not null]
+  activa boolean [not null, default: true]
+  created_at timestamptz [not null]
+
+  indexes {
+    (profesional_id, institucion_publica_id) [unique]
+    (id, profesional_id) [unique]
+  }
+}
+
+Table tarifas_hora_anuales_versiones {
+  profesional_institucion_id uuid [not null]
+  anio smallint [not null]
+  version integer [not null]
+  valor_hora_clp bigint [not null, note: 'CLP entero, sin decimales']
+  created_at timestamptz [not null]
+
+  indexes {
+    (profesional_institucion_id, anio, version) [pk]
+  }
+
+  Note: 'Tarifa privada; solo el profesional propietario crea nuevas versiones. La versión más alta es la vigente para nuevos períodos.'
+}
+
+Table retencion_boleta_honorarios {
+  anio smallint [pk]
+  porcentaje numeric(7,4) [not null, note: 'Parámetro legal global; por ejemplo, 15.25']
+
+  Note: 'Una fila global por año. Se mantiene por seed/migración controlada; no pertenece a usuarios ni tiene versionado por fila.'
+}
+
+Table periodos_mensuales {
+  id uuid [pk]
+  profesional_id uuid [not null]
+  anio smallint [not null]
+  mes smallint [not null]
+  retencion_porcentaje_aplicado numeric(7,4) [not null, note: 'Snapshot de la tasa global al crear el período']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    (profesional_id, anio, mes) [unique]
+    (id, profesional_id, anio) [unique]
+  }
+
+  checks {
+    `mes >= 1 AND mes <= 12` [name: 'chk_periodos_mensuales_mes']
+  }
+}
+
+Table periodos_instituciones {
+  id uuid [pk]
+  periodo_id uuid [not null]
+  profesional_id uuid [not null, note: 'Campo de ámbito para validar propietario con FK compuesta']
+  anio smallint [not null, note: 'Debe coincidir con el período y la tarifa']
+  profesional_institucion_id uuid [not null]
+  tarifa_hora_version integer [not null]
+  orden integer [not null, default: 0]
+  created_at timestamptz [not null]
+
+  indexes {
+    (periodo_id, profesional_institucion_id) [unique]
+  }
+
+  Note: 'Referencia la versión exacta de tarifa aplicada a esta institución en el período.'
+}
+
+Table registros_horas {
+  id uuid [pk]
+  periodo_institucion_id uuid [not null]
+  horas integer [not null, note: 'Entero, sin fecha']
+  orden integer [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    (periodo_institucion_id, orden) [unique]
+  }
+
+  checks {
+    `horas >= 1` [name: 'chk_registros_horas_minimo_uno']
+  }
+
+  Note: 'No añadir unicidad por horas: cantidades repetidas son registros válidos.'
+}
+
+Table sesiones_auth {
+  id uuid [pk]
+  usuario_id uuid [not null]
+  sid uuid [not null, unique]
+  familia_refresh_id uuid [not null]
+  refresh_token_hash varchar(128) [not null]
+  creada_at timestamptz [not null]
+  ultimo_uso_at timestamptz [not null]
+  expira_inactividad_at timestamptz [not null]
+  expira_absoluta_at timestamptz [not null]
+  revocada_at timestamptz
+
+  Note: 'Guardar el hash del refresh token, nunca el token en claro.'
+}
+
+Ref: profesionales.usuario_id - usuarios.id
+
+Ref: usuarios_roles.usuario_id > usuarios.id
+Ref: usuarios_roles.rol_id > roles.id
+
+Ref: profesionales_instituciones.profesional_id > profesionales.id
+Ref: profesionales_instituciones.institucion_publica_id > instituciones_publicas.id
+
+Ref: tarifas_hora_anuales_versiones.profesional_institucion_id > profesionales_instituciones.id
+Ref: periodos_mensuales.profesional_id > profesionales.id
+Ref: periodos_mensuales.anio > retencion_boleta_honorarios.anio
+
+Ref: periodos_instituciones.(periodo_id, profesional_id, anio) > periodos_mensuales.(id, profesional_id, anio)
+Ref: periodos_instituciones.(profesional_institucion_id, profesional_id) > profesionales_instituciones.(id, profesional_id)
+Ref: periodos_instituciones.(profesional_institucion_id, anio, tarifa_hora_version) > tarifas_hora_anuales_versiones.(profesional_institucion_id, anio, version)
+
+Ref: registros_horas.periodo_institucion_id > periodos_instituciones.id
+Ref: sesiones_auth.usuario_id > usuarios.id
 ```
+
+La autorización se resuelve en el backend mediante reglas asociadas a `ADMINISTRADOR` y `PROFESIONAL`; no se almacenan catálogos de permisos por acción en tablas. Los accesos y cambios administrativos se registran en logging estructurado/centralizado, no en una tabla relacional de auditoría.
 
 ### Entidades y atributos conceptuales
 
-| Entidad                          | Atributos principales                                                                  | Propósito                                                                                 |
-| -------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `USUARIO`                      | `id`, `identity_subject`, `activo`                                               | Identidad autenticada; puede tener varios roles.                                           |
-| `PROFESIONAL`                  | `id`, `usuario_id` único, datos del perfil                                        | Perfil propio de una cuenta con rol profesional.                                           |
-| `ROL`, `USUARIO_ROL`         | código, asignaciones                                                                  | Roles`ADMINISTRADOR` y `PROFESIONAL`; una cuenta puede tener ambos.                    |
-| `PERMISO`, `ROL_PERMISO`     | código, relación rol-permiso                                                         | Capacidades de UI/API; se aplican en backend.                                              |
-| `INSTITUCION_PUBLICA`          | `id`, nombre, estado                                                                 | Catálogo global de lectura para profesionales y administración del Administrador.        |
-| `PROFESIONAL_INSTITUCION`      | profesional, institución, estado                                                      | Relación de trabajo y ámbito de propiedad de la tarifa.                                  |
-| `TARIFA_HORA_ANUAL_VERSION`    | relación profesional-institución, año, versión, valor CLP entero, vigente          | Tarifa privada por profesional, institución y año.                                       |
-| `TASA_RETENCION_ANUAL_VERSION` | año, versión, porcentaje decimal, vigente                                            | Tasa global común a todos; lectura para Profesional y administración para Administrador. |
-| `PERIODO_MENSUAL`              | profesional, año, mes, versión de retención aplicada                                | Espacio mensual y dueño de los datos.                                                     |
-| `PERIODO_INSTITUCION`          | período, profesional, relación profesional-institución, versión de tarifa aplicada | Institución participante y tarifa histórica usada en ese período.                       |
-| `REGISTRO_HORA`                | período-institución, horas enteras, orden, timestamps                                | Fila sin fecha; horas`>= 1`; valores repetidos válidos.                                 |
-| `SESION_AUTH`                  | usuario,`sid`, hash refresh, familia, expiraciones, revocación                      | Sesiones revocables; nunca almacenar el refresh token en claro.                            |
-| `EVENTO_AUDITORIA`             | actor, acción, profesional afectado, recurso, fecha, correlación                     | Auditoría de accesos administrativos y cambios sensibles; no guardar secretos ni tokens.  |
+| Entidad | Atributos principales | Propósito |
+|---|---|---|
+| `USUARIO` | `id`, `identity_subject`, `activo` | Identidad autenticada; puede tener varios roles. |
+| `PROFESIONAL` | `id`, `usuario_id` único, datos del perfil | Perfil propio de una cuenta con rol profesional. |
+| `ROL`, `USUARIO_ROL` | Código y asignaciones | Roles `ADMINISTRADOR` y `PROFESIONAL`; una cuenta puede tener ambos. |
+| `INSTITUCION_PUBLICA` | `id`, nombre, estado | Catálogo global de lectura para profesionales; lo administra el Administrador. |
+| `PROFESIONAL_INSTITUCION` | Profesional, institución, estado | Relación de trabajo y ámbito de propiedad de la tarifa. |
+| `TARIFA_HORA_ANUAL_VERSION` | Relación profesional-institución, año, versión, valor CLP entero | Tarifa privada por profesional, institución y año; solo el propietario la crea/versiona. |
+| `RETENCION_BOLETA_HONORARIOS` | Año, porcentaje decimal | Parámetro legal global, una fila por año, cargado por configuración controlada. |
+| `PERIODO_MENSUAL` | Profesional, año, mes, porcentaje de retención aplicado | Espacio mensual, dueño de datos y snapshot de la tasa aplicada. |
+| `PERIODO_INSTITUCION` | Período, profesional, relación profesional-institución, versión tarifaria | Institución participante y tarifa histórica usada en ese período. |
+| `REGISTRO_HORA` | Período-institución, horas enteras, orden, timestamps | Fila sin fecha; horas `>= 1`; permite valores repetidos. |
+| `SESION_AUTH` | Usuario, `sid`, hash refresh, familia, expiraciones, revocación | Sesiones revocables; nunca almacenar el refresh token en claro. |
 
 ### Claves, restricciones y propiedad de datos
 
 - `PROFESIONAL.usuario_id` es único: una cuenta tiene como máximo un perfil profesional.
 - `PROFESIONAL_INSTITUCION` es único por `(profesional_id, institucion_id)`.
-- `TARIFA_HORA_ANUAL_VERSION` se identifica por relación profesional-institución, año y versión; solo una versión es la vigente para nuevas asignaciones.
-- `TASA_RETENCION_ANUAL_VERSION` se identifica por año y versión; solo una versión es la vigente para nuevos períodos de ese año.
-- `PERIODO_MENSUAL` es único por `(profesional_id, anio, mes)` y referencia la versión de retención aplicada.
-- La versión de retención referenciada por `PERIODO_MENSUAL` debe corresponder al mismo año del período.
+- `TARIFA_HORA_ANUAL_VERSION` se identifica por relación profesional-institución, año y versión. Solo el profesional propietario puede crear una nueva versión; Administrador puede consultar pero no escribir esas tarifas.
+- `RETENCION_BOLETA_HONORARIOS` tiene una fila global por año y no contiene `profesional_id`, `version` ni usuario creador.
+- `PERIODO_MENSUAL` es único por `(profesional_id, anio, mes)`, referencia el año de la tabla legal y conserva `retencion_porcentaje_aplicado` como snapshot.
+- El snapshot de retención de un período no cambia si posteriormente se corrige el valor global cargado para ese año.
 - `PERIODO_INSTITUCION` es único por `(periodo_id, profesional_institucion_id)` y referencia la versión exacta de tarifa usada. Su período, relación profesional-institución y tarifa deben corresponder al mismo profesional y año.
 - Para reforzar la propiedad en la base, se usarán claves foráneas compuestas con `profesional_id` (y año cuando aplique) en `PERIODO_INSTITUCION`. Esa columna puede repetirse para que PostgreSQL valide que período y relación pertenecen a la misma persona.
 - `REGISTRO_HORA.horas` es un entero `CHECK (horas >= 1)`. No se crea unicidad por cantidad de horas. `orden` permite mantener el orden visual.
-- Las tablas de configuración versionadas referenciadas por períodos no se editan en sitio. Una corrección crea una nueva versión; los períodos existentes conservan sus referencias.
+- Las versiones de tarifas horarias no se editan en sitio. Una corrección crea una nueva versión y los períodos existentes conservan la tarifa aplicada.
+- La tasa legal global se administra fuera de la aplicación mediante seed/migración. `PERIODO_MENSUAL.retencion_porcentaje_aplicado` conserva el valor usado aunque el parámetro global cambie.
 - Los totales de horas, bruto, retención y líquido son derivados; no se almacenan como datos editables ni se duplican en cada registro.
 - Las tarifas y todos los importes se guardan como enteros exactos en CLP (escala 0); la tasa de retención conserva precisión decimal porque es un porcentaje, no un monto.
 
@@ -408,7 +558,7 @@ erDiagram
 | Rol               | Acceso                                                                                                                                                                         |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `PROFESIONAL`   | CRUD de sus relaciones, tarifas propias, períodos y registros; lectura del catálogo público y tasa anual común. Ningún dato personal o financiero de otros profesionales. |
-| `ADMINISTRADOR` | Acceso total a profesionales, datos financieros y configuraciones; toda lectura/cambio administrativo queda sujeta a auditoría.                                               |
+| `ADMINISTRADOR` | Lectura de todos los datos y administración del sistema; no crea ni modifica tarifas horarias de profesionales. Otras consultas/cambios sensibles quedan sujetas a auditoría. |
 
 El backend obtiene el `profesional_id` desde el sujeto autenticado. Nunca acepta el dueño como autoridad desde body, query, ruta o estado del frontend. Cada consulta y mutación valida propiedad en backend; los IDs no evitan el aislamiento.
 
@@ -429,13 +579,13 @@ El backend obtiene el `profesional_id` desde el sujeto autenticado. Nunca acepta
 - **RN-13:** Modificar un registro recalcula los resultados.
 - **RN-14:** Eliminar un registro recalcula los resultados.
 - **RN-15:** Los períodos históricos conservan las reglas que les correspondían; las correcciones no son silenciosas.
-- **RN-16:** `PROFESIONAL` solo puede consultar/modificar información propia. `ADMINISTRADOR` tiene acceso total; el backend valida la propiedad en toda operación.
-- **RN-17:** El valor hora es privado por relación profesional-institución y año/version; no se expone entre profesionales.
-- **RN-18:** La tasa de retención es común y versionada por año; profesional puede leerla, solo administrador puede modificarla.
+- **RN-16:** `PROFESIONAL` solo puede consultar/modificar información propia. `ADMINISTRADOR` puede consultar datos de todos y administrar el sistema, con excepción de la escritura de tarifas horarias personales; el backend valida la propiedad en toda operación.
+- **RN-17:** El valor hora es privado por relación profesional-institución y año/version. Solo el profesional propietario crea/versiona la tarifa; Administrador tiene lectura, no escritura.
+- **RN-18:** La tasa de retención es un parámetro legal común, con una fila global fija por año. Se lee desde la aplicación y se actualiza mediante configuración controlada, no desde la UI.
 - **RN-19:** Cada registro de horas es un entero mayor o igual a 1. No se permiten fracciones ni cero.
 - **RN-20:** La moneda es CLP sin decimales. Los montos se almacenan como valores enteros exactos.
 - **RN-21:** Redondear la retención al peso más cercano por institución con `MidpointRounding.AwayFromZero`; líquido institucional es bruto menos retención redondeada y el resumen mensual suma resultados institucionales.
-- **RN-22:** Cada período conserva la versión exacta de la tarifa horaria y de la tasa de retención aplicada al crearse o asociarse la institución.
+- **RN-22:** Cada período conserva la versión exacta de la tarifa horaria y un snapshot del porcentaje de retención aplicado.
 
 ## 20. Principio de diseño del producto
 
@@ -481,7 +631,7 @@ Hasta resolverlas, la IA debe conservarlas como decisiones abiertas y no inventa
 - No deduplicar filas repetidas ni imponer un límite funcional de cantidad de registros.
 - No hardcodear tasas tributarias o valores hora; conservar su año y su contexto profesional-institución.
 - No añadir reglas del sector privado ni emitir boletas o pagos reales en el MVP.
-- Respetar el acceso global de `ADMINISTRADOR` y el aislamiento propio de `PROFESIONAL`; no exponer tarifas de otro profesional.
+- Respetar el acceso global de lectura de `ADMINISTRADOR` y el aislamiento propio de `PROFESIONAL`; solo el profesional propietario puede escribir/versionar su tarifa.
 - Respetar horas enteras `>= 1`, CLP sin decimales, redondeo por institución y versiones históricas aplicadas.
 - No inventar comportamientos para decisiones que siguen pendientes: conflicto/autoguardado, reversión/reorden y límites técnicos de almacenamiento.
 - Aplicar la autorización del backend definida en los estándares; guards y componentes React solo controlan la experiencia visual.
