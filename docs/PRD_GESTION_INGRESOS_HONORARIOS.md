@@ -1,6 +1,6 @@
 # PRD — Gestión de ingresos por honorarios para profesionales de la salud
 
-**Versión:** 0.4
+**Versión:** 0.8
 **Alcance:** Sistema público
 **Estado:** Definición inicial de producto
 
@@ -139,11 +139,13 @@ Retención institucional CLP = redondear Retención sin redondear al peso más c
 Líquido institucional CLP = Ingreso bruto CLP − Retención institucional CLP
 ```
 
-El resumen mensual consolida las horas, el bruto, la retención y el líquido estimado de todas las instituciones del período sumando los importes institucionales ya redondeados.
+Los resultados por institución se guardan como resumen calculado en `PERIODO_INSTITUCION`. El consolidado mensual se guarda en `PERIODO_MENSUAL` y suma los resúmenes institucionales ya redondeados.
 
 La retención se redondea **por institución** al peso más cercano, con regla *midpoint away from zero* (mitades alejándose de cero; `MidpointRounding.AwayFromZero` en .NET). El líquido institucional se calcula restando esa retención redondeada al bruto.
 
 Todos los montos se expresan en pesos chilenos (**CLP**, sin decimales) y se almacenan como valores enteros exactos; no usar punto flotante. La tasa porcentual conserva precisión decimal (por ejemplo, 15,25 %). Los valores líquidos siguen siendo estimados.
+
+Los registros de horas son el detalle de origen; los campos totalizadores son valores derivados que mantiene el backend. Al agregar, editar o eliminar horas, el backend actualiza el registro, el resumen institucional y el consolidado mensual en una sola transacción. Si falla algún paso, se revierte toda la operación. La API devuelve los totales confirmados después de guardar.
 
 ## 8. Configuración anual e historia
 
@@ -212,6 +214,8 @@ Guardando… → Guardado
 
 La estrategia para cambios simultáneos, reintentos, desconexión y conflictos entre pestañas/dispositivos está **Por definir**. El producto debe evitar que un error de red dé la impresión de que un cambio no guardado sí quedó persistido.
 
+El cambio de la fila de horas, los totales de su institución y el consolidado mensual se confirman juntos. La interfaz muestra `Guardado` solo después de que el backend confirme la transacción y devuelva los nuevos totales.
+
 ### Recálculo
 
 Agregar, editar o eliminar horas actualiza inmediatamente las horas e importes visibles. La UI puede mostrar un cálculo optimista mientras guarda; el resultado confirmado por backend es autoritativo.
@@ -222,6 +226,7 @@ Agregar, editar o eliminar horas actualiza inmediatamente las horas e importes v
 - Selector por mes y año.
 - Cada mes permite seleccionar las instituciones en que se trabajó.
 - Agregar una institución a un mes no cambia la configuración general del profesional.
+- Una institución solo puede retirarse del período si no tiene registros de horas; no se permite eliminarla en cascada junto con esos registros.
 - No se presupone que todas las instituciones estén activas en todos los períodos.
 
 ## 12. Historias de usuario
@@ -244,6 +249,9 @@ Agregar, editar o eliminar horas actualiza inmediatamente las horas e importes v
 | HU-14 | Como administrador, quiero consultar los datos de todos los profesionales y administrar el sistema, sin crear tarifas horarias en su nombre. |
 | HU-15 | Como profesional, quiero consultar la tasa de retención anual común sin poder modificarla.                                         |
 | HU-16 | Como profesional, quiero crear o corregir únicamente las tarifas de mis propias relaciones con instituciones.                         |
+| HU-17 | Como profesional, quiero comparar en una tabla el líquido y su participación mensual por institución durante un intervalo de años.       |
+| HU-18 | Como profesional, quiero ver la evolución mensual del líquido por institución y el total en un gráfico lineal.                          |
+| HU-19 | Como administrador, quiero seleccionar un profesional y consultar su tabla y evolución mensual de líquido por institución.            |
 
 ## 13. Requisitos funcionales
 
@@ -268,6 +276,10 @@ Agregar, editar o eliminar horas actualiza inmediatamente las horas e importes v
 | RF-17 | Aislar en backend los datos por profesional; Administrador consulta todos, con escritura de tarifas reservada al propietario. |
 | RF-18 | Exponer la tasa anual común en modo lectura; no permitir editarla desde la aplicación.                                  |
 | RF-19 | Conservar la versión de tarifa y el snapshot de la tasa aplicada a cada período.                                       |
+| RF-20 | Persistir y actualizar transaccionalmente los totales por institución y del período al cambiar horas.                    |
+| RF-21 | Rechazar el retiro de una institución del período si contiene registros de horas.                                         |
+| RF-22 | Mostrar en el Dashboard una tabla mensual por institución, con líquido, participación porcentual del total del mes y total mensual. |
+| RF-23 | Mostrar un gráfico lineal de líquido mensual por institución y una serie con el total para el intervalo de años seleccionado. |
 
 ## 14. Criterios de aceptación
 
@@ -315,6 +327,26 @@ Si se publica una nueva versión de tarifa o se corrige la tasa global mediante 
 
 El profesional propietario puede crear una tarifa y publicar una nueva versión solo para su relación con la institución. Otro profesional no puede consultar ni modificar esa tarifa; el `ADMINISTRADOR` puede consultarla, pero no crearla, editarla ni versionarla.
 
+### CA-12 — No retirar instituciones con horas
+
+Dada una institución incluida en un período con uno o más registros de horas, cuando se intenta retirarla, el backend rechaza la operación con `409 Conflict`. Los registros y totales se conservan. Si no hay registros, se permite retirarla y se actualiza el consolidado mensual en la misma transacción.
+
+### CA-13 — Totales persistidos y atómicos
+
+Al agregar, editar o eliminar un registro, el sistema persiste los totales actualizados de la institución y del período en una sola transacción. Si falla el guardado del registro o cualquiera de los agregados, la operación completa se revierte. Los totales guardados coinciden con la suma de los registros.
+
+### CA-14 — Tabla mensual de líquido por institución
+
+Para el intervalo de años seleccionado, el Dashboard muestra los meses agrupados por año. Cada institución tiene una columna con su líquido CLP y su participación porcentual del líquido total de ese mes; la última columna muestra el total mensual. El porcentaje es `líquido de la institución / líquido total mensual × 100` y no se persiste. Si el total mensual es cero, mostrar `—` como porcentaje.
+
+### CA-15 — Gráfico lineal de evolución
+
+El gráfico muestra una serie mensual por institución y una serie del total mensual. Usa el mismo intervalo de años y filtro de instituciones que la tabla. El total de cada punto mensual coincide con la suma de los importes institucionales de esa fila.
+
+### CA-16 — Alcance y ausencia de datos
+
+`PROFESIONAL` solo consulta sus propios datos. `ADMINISTRADOR` elige un profesional; no se combinan ingresos de varias personas. Si no existe `PERIODO_MENSUAL` para un mes, la tabla deja la celda sin dato y el gráfico muestra un hueco. Si el período existe pero una institución no fue vinculada, su valor es CLP $0. Si un período existente tiene total cero, la participación porcentual muestra `—`.
+
 ## 15. Pantallas del MVP
 
 El MVP puede organizarse en cinco áreas principales:
@@ -325,7 +357,39 @@ El MVP puede organizarse en cinco áreas principales:
 4. Tarifas/valores hora.
 5. Configuración.
 
-Dashboard inicial: horas trabajadas, bruto acumulado, retención estimada y líquido estimado, además de los resultados por institución.
+### Dashboard — tabla y evolución del líquido
+
+El Dashboard permite analizar el líquido por institución a través de los meses y años, con una presentación tipo planilla como vista principal y un gráfico lineal complementario. No se usa gráfico circular.
+
+#### Filtros
+
+- Intervalo de años seleccionado; los meses aparecen agrupados bajo cada año.
+- Instituciones: todas o selección de una o varias.
+- `PROFESIONAL` siempre consulta su propio perfil. `ADMINISTRADOR` selecciona un profesional; no se consolidan ingresos de personas distintas.
+
+#### Tabla mensual
+
+- Una fila por mes y año, ordenada cronológicamente.
+- Una columna por institución incluida en el intervalo y un total líquido mensual.
+- Cada celda institucional muestra el líquido CLP sin decimales y su participación en el líquido total del mes. El porcentaje se calcula como `líquido institucional / líquido mensual × 100`; no se almacena. La precisión visual del porcentaje queda por definir, con una cifra decimal como recomendación.
+- La columna total muestra el líquido mensual consolidado.
+- Mes sin `PERIODO_MENSUAL`: mostrar hueco/sin dato. Si el período existe pero no tiene una relación con una institución, mostrar CLP $0 para esa institución. Si el total mensual es cero, mostrar `—` para el porcentaje.
+
+Ejemplo para septiembre de 2026:
+
+| Año | Mes | Tucapel — líquido / participación | Lorenzo Arenas — líquido / participación | Total líquido |
+|---:|---|---:|---:|---:|
+| 2026 | Septiembre | $1.120.815 · 63,0 % | $658.032 · 37,0 % | $1.778.847 |
+
+#### Gráfico lineal
+
+- Eje horizontal: meses consecutivos dentro del intervalo seleccionado.
+- Eje vertical: líquido CLP.
+- Una serie por institución y una serie consolidada del total mensual.
+- Aplica los mismos filtros de institución y profesional que la tabla.
+- Un mes sin período registrado aparece como hueco; un período existente sin ingresos se representa como cero.
+
+La tabla y el gráfico consultan `PERIODO_INSTITUCION.liquido_total_clp` y `PERIODO_MENSUAL.liquido_total_clp`. Reutilizan los totales persistidos y las versiones históricas ya aplicadas; no recalculan períodos antiguos con tarifas o tasas actuales. La suma institucional de cada fila debe coincidir con su total mensual.
 
 ## 16. Fuera del alcance del MVP
 
@@ -338,13 +402,13 @@ Dashboard inicial: horas trabajadas, bruto acumulado, retención estimada y líq
 
 ## 17. Métricas futuras
 
-La estructura podrá habilitar posteriormente:
+El MVP incluye la tabla multi-año de líquido mensual por institución, su participación mensual y el gráfico lineal por institución más el total. Se consideran posteriores estas analíticas adicionales:
 
-- Ingresos y horas mensuales/anuales.
-- Ingreso por institución y porcentaje de ingresos por institución.
-- Valor promedio por hora.
-- Institución que genera más ingresos.
-- Evolución y proyección de ingresos/horas.
+- Comparación automática con el mes anterior o con el mismo mes de años previos.
+- Participación porcentual acumulada por institución para un año o rango completo.
+- Valor líquido promedio por hora y ranking de instituciones por ingresos.
+- Proyección de ingresos y horas.
+- Exportación de resultados a CSV.
 
 Estas métricas no amplían por sí mismas el alcance del MVP.
 
@@ -435,6 +499,10 @@ Table periodos_mensuales {
   anio smallint [not null]
   mes smallint [not null]
   retencion_porcentaje_aplicado numeric(7,4) [not null, note: 'Snapshot de la tasa global al crear el período']
+  total_horas bigint [not null, default: 0]
+  bruto_total_clp bigint [not null, default: 0]
+  retencion_total_clp bigint [not null, default: 0]
+  liquido_total_clp bigint [not null, default: 0]
   created_at timestamptz [not null]
   updated_at timestamptz [not null]
 
@@ -455,14 +523,19 @@ Table periodos_instituciones {
   anio smallint [not null, note: 'Debe coincidir con el período y la tarifa']
   profesional_institucion_id uuid [not null]
   tarifa_hora_version integer [not null]
+  total_horas bigint [not null, default: 0]
+  bruto_total_clp bigint [not null, default: 0]
+  retencion_total_clp bigint [not null, default: 0]
+  liquido_total_clp bigint [not null, default: 0]
   orden integer [not null, default: 0]
   created_at timestamptz [not null]
+  updated_at timestamptz [not null]
 
   indexes {
     (periodo_id, profesional_institucion_id) [unique]
   }
 
-  Note: 'Referencia la versión exacta de tarifa aplicada a esta institución en el período.'
+  Note: 'Referencia la tarifa aplicada y persiste el resumen calculado de la institución.'
 }
 
 Table registros_horas {
@@ -515,7 +588,7 @@ Ref: periodos_instituciones.(periodo_id, profesional_id, anio) > periodos_mensua
 Ref: periodos_instituciones.(profesional_institucion_id, profesional_id) > profesionales_instituciones.(id, profesional_id)
 Ref: periodos_instituciones.(profesional_institucion_id, anio, tarifa_hora_version) > tarifas_hora_anuales_versiones.(profesional_institucion_id, anio, version)
 
-Ref: registros_horas.periodo_institucion_id > periodos_instituciones.id
+Ref: registros_horas.periodo_institucion_id > periodos_instituciones.id [delete: restrict]
 Ref: sesiones_auth.usuario_id > usuarios.id
 ```
 
@@ -532,8 +605,8 @@ La autorización se resuelve en el backend mediante reglas asociadas a `ADMINIST
 | `PROFESIONAL_INSTITUCION` | Profesional, institución, estado | Relación de trabajo y ámbito de propiedad de la tarifa. |
 | `TARIFA_HORA_ANUAL_VERSION` | Relación profesional-institución, año, versión, valor CLP entero | Tarifa privada por profesional, institución y año; solo el propietario la crea/versiona. |
 | `RETENCION_BOLETA_HONORARIOS` | Año, porcentaje decimal | Parámetro legal global, una fila por año, cargado por configuración controlada. |
-| `PERIODO_MENSUAL` | Profesional, año, mes, porcentaje de retención aplicado | Espacio mensual, dueño de datos y snapshot de la tasa aplicada. |
-| `PERIODO_INSTITUCION` | Período, profesional, relación profesional-institución, versión tarifaria | Institución participante y tarifa histórica usada en ese período. |
+| `PERIODO_MENSUAL` | Profesional, año, mes, tasa aplicada y totales consolidados | Espacio mensual, dueño de datos y resumen persistido del período. |
+| `PERIODO_INSTITUCION` | Período, profesional, relación, tarifa aplicada y totales | Institución participante y resumen persistido por institución. |
 | `REGISTRO_HORA` | Período-institución, horas enteras, orden, timestamps | Fila sin fecha; horas `>= 1`; permite valores repetidos. |
 | `SESION_AUTH` | Usuario, `sid`, hash refresh, familia, expiraciones, revocación | Sesiones revocables; nunca almacenar el refresh token en claro. |
 
@@ -548,9 +621,11 @@ La autorización se resuelve en el backend mediante reglas asociadas a `ADMINIST
 - `PERIODO_INSTITUCION` es único por `(periodo_id, profesional_institucion_id)` y referencia la versión exacta de tarifa usada. Su período, relación profesional-institución y tarifa deben corresponder al mismo profesional y año.
 - Para reforzar la propiedad en la base, se usarán claves foráneas compuestas con `profesional_id` (y año cuando aplique) en `PERIODO_INSTITUCION`. Esa columna puede repetirse para que PostgreSQL valide que período y relación pertenecen a la misma persona.
 - `REGISTRO_HORA.horas` es un entero `CHECK (horas >= 1)`. No se crea unicidad por cantidad de horas. `orden` permite mantener el orden visual.
+- No se puede eliminar `PERIODO_INSTITUCION` mientras tenga registros en `REGISTRO_HORA`. La FK usa `ON DELETE RESTRICT`; el backend rechaza el intento con `409 Conflict`.
 - Las versiones de tarifas horarias no se editan en sitio. Una corrección crea una nueva versión y los períodos existentes conservan la tarifa aplicada.
 - La tasa legal global se administra fuera de la aplicación mediante seed/migración. `PERIODO_MENSUAL.retencion_porcentaje_aplicado` conserva el valor usado aunque el parámetro global cambie.
-- Los totales de horas, bruto, retención y líquido son derivados; no se almacenan como datos editables ni se duplican en cada registro.
+- Los totales son agregados derivados y persistidos en `PERIODO_INSTITUCION` y `PERIODO_MENSUAL`. No son editables desde la API ni se guardan en cada registro de hora; el detalle de `REGISTRO_HORA` es la fuente para recalcularlos.
+- Cada mutación de horas actualiza el registro y ambos niveles de resumen en la misma transacción. Una falla revierte todos los cambios; una rutina de reconciliación puede reconstruir los agregados desde el detalle.
 - Las tarifas y todos los importes se guardan como enteros exactos en CLP (escala 0); la tasa de retención conserva precisión decimal porque es un porcentaje, no un monto.
 
 ### Ámbito de visibilidad
@@ -586,6 +661,8 @@ El backend obtiene el `profesional_id` desde el sujeto autenticado. Nunca acepta
 - **RN-20:** La moneda es CLP sin decimales. Los montos se almacenan como valores enteros exactos.
 - **RN-21:** Redondear la retención al peso más cercano por institución con `MidpointRounding.AwayFromZero`; líquido institucional es bruto menos retención redondeada y el resumen mensual suma resultados institucionales.
 - **RN-22:** Cada período conserva la versión exacta de la tarifa horaria y un snapshot del porcentaje de retención aplicado.
+- **RN-23:** Cada alta, edición o eliminación de horas actualiza en una transacción el detalle, el resumen de la institución y el consolidado del período.
+- **RN-24:** No se puede retirar una institución de un período si tiene registros de horas; la eliminación en cascada está prohibida.
 
 ## 20. Principio de diseño del producto
 
@@ -603,6 +680,8 @@ El MVP 1.0 se considera funcional cuando un profesional autorizado puede:
 4. Crear libremente cualquier cantidad de registros de horas y editarlos/eliminarlos rápidamente.
 5. Ver horas acumuladas, bruto, retención del año y líquido estimado por institución y como consolidado.
 6. Consultar períodos históricos con las reglas correspondientes al período.
+7. Guardar los totales calculados por institución y período, actualizados junto con cada mutación de horas.
+8. Impedir el retiro de una institución del mes mientras tenga registros de horas.
 
 El núcleo del producto es:
 
@@ -619,7 +698,8 @@ Estas decisiones requieren definición antes de implementar las reglas correspon
 1. **Autoguardado:** debounce, feedback, reintentos, edición concurrente y resolución de conflictos entre pestañas/dispositivos.
 2. **Orden y reversión:** si se permite reordenar manualmente las filas y si se requiere deshacer/restaurar eliminaciones.
 3. **Límites técnicos:** elegir tipos de almacenamiento y límites de entrada suficientemente amplios sin imponer un límite funcional de registros.
-4. **Datos de prueba tributarios:** validar tasas anuales antes de considerarlas oficiales.
+4. **Porcentaje en el Dashboard:** definir la precisión visual (se recomienda una cifra decimal).
+5. **Datos de prueba tributarios:** validar tasas anuales antes de considerarlas oficiales.
 
 Hasta resolverlas, la IA debe conservarlas como decisiones abiertas y no inventar comportamientos.
 
@@ -633,6 +713,11 @@ Hasta resolverlas, la IA debe conservarlas como decisiones abiertas y no inventa
 - No añadir reglas del sector privado ni emitir boletas o pagos reales en el MVP.
 - Respetar el acceso global de lectura de `ADMINISTRADOR` y el aislamiento propio de `PROFESIONAL`; solo el profesional propietario puede escribir/versionar su tarifa.
 - Respetar horas enteras `>= 1`, CLP sin decimales, redondeo por institución y versiones históricas aplicadas.
+- El Dashboard usa una tabla mensual multi-año con líquido/participación por institución y una línea de líquido por institución más el total.
+- Aplicar filtros de instituciones y profesional respetando el alcance del rol; no consolidar ingresos de profesionales distintos.
+- Si no existe período mensual, mostrar hueco/sin datos; si el período existe y una institución no fue asociada, mostrar cero.
+- Actualizar transaccionalmente los registros y los dos niveles de totales; nunca aceptar totales editables desde el frontend.
+- No permitir retirar una institución de un período si contiene registros; no borrar detalles mediante cascada.
 - No inventar comportamientos para decisiones que siguen pendientes: conflicto/autoguardado, reversión/reorden y límites técnicos de almacenamiento.
 - Aplicar la autorización del backend definida en los estándares; guards y componentes React solo controlan la experiencia visual.
 - Mantener los cálculos mostrados actualizados; el backend es la autoridad del resultado persistido.
