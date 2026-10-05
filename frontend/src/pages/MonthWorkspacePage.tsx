@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { Alert, Button, Card, DatePicker, Empty, Input, Popconfirm, Select, Skeleton, Space, Tag, Typography, type InputRef } from 'antd'
+import { CloseOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Col, DatePicker, Empty, Input, Popconfirm, Row, Select, Skeleton, Space, Tag, Typography, type InputRef } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { incomeService } from '../services/incomeService'
 import { getApiErrorMessage } from '../services/apiClient'
@@ -221,81 +222,6 @@ export function MonthWorkspacePage() {
 
           {isAdmin && <Alert className="readonly-alert" type="info" showIcon message="Vista de administrador" description="Puedes consultar períodos, horas y montos. Las modificaciones de horas corresponden exclusivamente al profesional." />}
 
-          {workspace.institutions.length === 0 && <Card className="empty-period" bordered={false}>
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={workspace.exists ? 'Todavía no agregas instituciones a este mes.' : 'Este período aún no tiene actividad.'} />
-          </Card>}
-
-          <div className="institution-grid">
-            {workspace.institutions.map((institution, index) => (
-              <Card key={institution.professionalInstitutionId} className="institution-card" bordered={false}>
-                <div className="institution-card-top">
-                  <div className="institution-title-wrap">
-                    <span className={`institution-index index-${index % 4}`}>{String(index + 1).padStart(2, '0')}</span>
-                    <div>
-                      <Typography.Title level={3}>{institution.institutionName}</Typography.Title>
-                      <Typography.Text type="secondary">{formatClp(institution.hourlyRateClp)} / hora</Typography.Text>
-                    </div>
-                  </div>
-                  {canEdit && <Popconfirm
-                    title="Retirar institución del período"
-                    description="Solo se puede retirar si no tiene registros de horas."
-                    okText="Retirar"
-                    cancelText="Cancelar"
-                    onConfirm={() => removePeriodInstitution(institution.professionalInstitutionId)}
-                  ><Button type="text" danger disabled={busy}>Retirar</Button></Popconfirm>}
-                </div>
-
-                <div className="hour-entry-list" data-institution={institution.professionalInstitutionId}>
-          {institution.records.map(record => <HourEditor
-                    key={record.id}
-                    record={record}
-                    canEdit={canEdit}
-                    onCreate={hours => incomeService.addHours(year, month, institution.professionalInstitutionId, hours)}
-                    onUpdate={(id, hours, version) => incomeService.updateHours(id, hours, version)}
-                    onDelete={record => deleteRecord(institution.professionalInstitutionId, record)}
-                    onReload={reloadCurrentWorkspace}
-                    onCommitted={result => commitHour(institution.professionalInstitutionId, result)}
-                    onEnterNext={() => addNextDraft(institution.professionalInstitutionId)}
-                  />)}
-                  {draftRows.filter(row => row.institutionId === institution.professionalInstitutionId).map(draft => <HourEditor
-                    key={`draft-${draft.key}`}
-                    draftKey={draft.key}
-                    canEdit={canEdit}
-                    onCreate={hours => incomeService.addHours(year, month, institution.professionalInstitutionId, hours)}
-                    onUpdate={(id, hours, version) => incomeService.updateHours(id, hours, version)}
-                    onDelete={record => deleteRecord(institution.professionalInstitutionId, record)}
-                    onReload={reloadCurrentWorkspace}
-                    onCommitted={result => commitHour(institution.professionalInstitutionId, result)}
-                    onEnterNext={() => addNextDraft(institution.professionalInstitutionId)}
-                    onCancel={() => removeDraft(draft.key)}
-                    onPersisted={() => removeDraft(draft.key)}
-                  />)}
-                  {institution.recordsCount > 0 && <Typography.Text className="records-count">
-                    Mostrando {institution.records.length} de {institution.recordsCount} registros
-                  </Typography.Text>}
-                  {institution.hasMoreRecords && <Button
-                    type="link"
-                    size="small"
-                    loading={loadingOlderInstitutionId === institution.professionalInstitutionId}
-                    disabled={loadingOlderInstitutionId !== null && loadingOlderInstitutionId !== institution.professionalInstitutionId}
-                    onClick={() => void loadOlderHours(institution)}
-                  >Cargar registros anteriores</Button>}
-                  {institution.records.length === 0 && !draftRows.some(row => row.institutionId === institution.professionalInstitutionId) && <div className="empty-hour-hint">Agrega el primer registro de horas.</div>}
-                </div>
-
-                {canEdit && <Button type="dashed" block className="add-hour-button" disabled={busy}
-                  onClick={() => addNextDraft(institution.professionalInstitutionId)}>＋ Agregar horas</Button>}
-
-                <div className="institution-totals">
-                  <div><span>Horas</span><strong>{institution.totalHours} h</strong></div>
-                  <div><span>Bruto</span><strong>{formatClp(institution.grossTotalClp)}</strong></div>
-                  <div><span>Retención</span><strong>{formatClp(institution.retentionTotalClp)}</strong></div>
-                  <div className="net-line"><span>Líquido est.</span><strong>{formatClp(institution.netTotalClp)}</strong></div>
-                </div>
-              </Card>
-            ))}
-          </div>
-
           {canEdit && <Card className="add-institution-card" bordered={false}>
             {!addDraft ? <Button type="dashed" onClick={() => setAddDraft(true)} disabled={availableRelationships.length === 0}>
               ＋ Agregar institución a este mes
@@ -317,6 +243,83 @@ export function MonthWorkspacePage() {
             </Space>}
             {availableRelationships.length === 0 && <Typography.Text type="secondary">Configura una institución y su tarifa anual para poder agregarla a este mes.</Typography.Text>}
           </Card>}
+
+          {workspace.institutions.length === 0 && <Card className="empty-period" bordered={false}>
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={workspace.exists ? 'Todavía no agregas instituciones a este mes.' : 'Este período aún no tiene actividad.'} />
+          </Card>}
+
+          <Row gutter={[18, 18]}>
+            {workspace.institutions.map((institution, index) => (
+              <Col key={institution.professionalInstitutionId}>
+                <Card className="institution-card" bordered={false}>
+                  <div className="institution-card-top">
+                    <div className="institution-title-wrap">
+                      <span className={`institution-index index-${index % 4}`}>{String(index + 1).padStart(2, '0')}</span>
+                      <div>
+                        <Typography.Title level={3}>{institution.institutionName}</Typography.Title>
+                        <Typography.Text type="secondary">{formatClp(institution.hourlyRateClp)} / hora</Typography.Text>
+                      </div>
+                    </div>
+                    {canEdit && <Popconfirm
+                      title="Retirar institución del período"
+                      description="Solo se puede retirar si no tiene registros de horas."
+                      okText="Retirar"
+                      cancelText="Cancelar"
+                      onConfirm={() => removePeriodInstitution(institution.professionalInstitutionId)}
+                    ><Button type="text" danger disabled={busy}>Retirar</Button></Popconfirm>}
+                  </div>
+
+                  <div className="hour-entry-list" data-institution={institution.professionalInstitutionId}>
+                    {institution.records.map(record => <HourEditor
+                      key={record.id}
+                      record={record}
+                      canEdit={canEdit}
+                      onCreate={hours => incomeService.addHours(year, month, institution.professionalInstitutionId, hours)}
+                      onUpdate={(id, hours, version) => incomeService.updateHours(id, hours, version)}
+                      onDelete={record => deleteRecord(institution.professionalInstitutionId, record)}
+                      onReload={reloadCurrentWorkspace}
+                      onCommitted={result => commitHour(institution.professionalInstitutionId, result)}
+                      onEnterNext={() => addNextDraft(institution.professionalInstitutionId)}
+                    />)}
+                    {draftRows.filter(row => row.institutionId === institution.professionalInstitutionId).map(draft => <HourEditor
+                      key={`draft-${draft.key}`}
+                      draftKey={draft.key}
+                      canEdit={canEdit}
+                      onCreate={hours => incomeService.addHours(year, month, institution.professionalInstitutionId, hours)}
+                      onUpdate={(id, hours, version) => incomeService.updateHours(id, hours, version)}
+                      onDelete={record => deleteRecord(institution.professionalInstitutionId, record)}
+                      onReload={reloadCurrentWorkspace}
+                      onCommitted={result => commitHour(institution.professionalInstitutionId, result)}
+                      onEnterNext={() => addNextDraft(institution.professionalInstitutionId)}
+                      onCancel={() => removeDraft(draft.key)}
+                      onPersisted={() => removeDraft(draft.key)}
+                    />)}
+                    {institution.recordsCount > 0 && <Typography.Text className="records-count">
+                      Mostrando {institution.records.length} de {institution.recordsCount} registros
+                    </Typography.Text>}
+                    {institution.hasMoreRecords && <Button
+                      type="link"
+                      size="small"
+                      loading={loadingOlderInstitutionId === institution.professionalInstitutionId}
+                      disabled={loadingOlderInstitutionId !== null && loadingOlderInstitutionId !== institution.professionalInstitutionId}
+                      onClick={() => void loadOlderHours(institution)}
+                    >Cargar registros anteriores</Button>}
+                    {institution.records.length === 0 && !draftRows.some(row => row.institutionId === institution.professionalInstitutionId) && <div className="empty-hour-hint">Agrega el primer registro de horas.</div>}
+                  </div>
+
+                  {canEdit && <Button type="dashed" block className="add-hour-button" disabled={busy}
+                    onClick={() => addNextDraft(institution.professionalInstitutionId)}>＋ Agregar horas</Button>}
+
+                  <div className="institution-totals">
+                    <div><span>Horas</span><strong>{institution.totalHours} h</strong></div>
+                    <div><span>Bruto</span><strong>{formatClp(institution.grossTotalClp)}</strong></div>
+                    <div><span>Retención</span><strong>{formatClp(institution.retentionTotalClp)}</strong></div>
+                    <div className="net-line"><span>Líquido est.</span><strong>{formatClp(institution.netTotalClp)}</strong></div>
+                  </div>
+                </Card>
+              </Col>
+            ))}
+          </Row>
         </>
       )}
     </div>
@@ -505,7 +508,7 @@ function HourEditor({
           setDeleting(true)
           try { await onDelete(record) } catch (deleteError) { setError(getApiErrorMessage(deleteError)); setState('error') } finally { setDeleting(false) }
         }}
-      ><Button type="text" danger size="small" disabled={deleting || state === 'pending' || state === 'saving'} aria-label="Eliminar registro">×</Button></Popconfirm>}
+      ><Button type="text" danger size="large" icon={<CloseOutlined />} disabled={deleting || state === 'pending' || state === 'saving'} aria-label="Eliminar registro" /></Popconfirm>}
       {!record && canEdit && onCancel && <Button type="text" size="small" onClick={onCancel} aria-label="Cancelar fila">×</Button>}
     </div>
     <div className="hour-editor-feedback" aria-live="polite">
