@@ -1,0 +1,48 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GestionIngresosHonorarios.Domain", "src\GestionIngresosHonorarios.Domain\GestionIngresosHonorarios.Domain.csproj", "{4C91BE77-CE7E-4D57-86EE-C2859DE6B395}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GestionIngresosHonorarios.Application", "src\GestionIngresosHonorarios.Application\GestionIngresosHonorarios.Application.csproj", "{D2B642C5-391A-4D70-BD4D-655CA650DE4E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GestionIngresosHonorarios.Infrastructure", "src\GestionIngresosHonorarios.Infrastructure\GestionIngresosHonorarios.Infrastructure.csproj", "{20484986-69F3-4BB6-A7B6-95E6B6D87DD9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GestionIngresosHonorarios.Api", "src\GestionIngresosHonorarios.Api\GestionIngresosHonorarios.Api.csproj", "{3C4A86FA-5B72-41F3-9E41-17E683EFD198}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GestionIngresosHonorarios.UnitTests", "tests\GestionIngresosHonorarios.UnitTests\GestionIngresosHonorarios.UnitTests.csproj", "{6C2E58CC-9C11-4D01-AE67-6BDBE49B9C12}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PasswordHashTool", "tools\PasswordHashTool\PasswordHashTool.csproj", "{10C04E08-83C7-4E59-9D88-2689747EC74F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4C91BE77-CE7E-4D57-86EE-C2859DE6B395}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C91BE77-CE7E-4D57-86EE-C2859DE6B395}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C91BE77-CE7E-4D57-86EE-C2859DE6B395}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C91BE77-CE7E-4D57-86EE-C2859DE6B395}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D2B642C5-391A-4D70-BD4D-655CA650DE4E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D2B642C5-391A-4D70-BD4D-655CA650DE4E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D2B642C5-391A-4D70-BD4D-655CA650DE4E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D2B642C5-391A-4D70-BD4D-655CA650DE4E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{20484986-69F3-4BB6-A7B6-95E6B6D87DD9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{20484986-69F3-4BB6-A7B6-95E6B6D87DD9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{20484986-69F3-4BB6-A7B6-95E6B6D87DD9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{20484986-69F3-4BB6-A7B6-95E6B6D87DD9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C4A86FA-5B72-41F3-9E41-17E683EFD198}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C4A86FA-5B72-41F3-9E41-17E683EFD198}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C4A86FA-5B72-41F3-9E41-17E683EFD198}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C4A86FA-5B72-41F3-9E41-17E683EFD198}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6C2E58CC-9C11-4D01-AE67-6BDBE49B9C12}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6C2E58CC-9C11-4D01-AE67-6BDBE49B9C12}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6C2E58CC-9C11-4D01-AE67-6BDBE49B9C12}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6C2E58CC-9C11-4D01-AE67-6BDBE49B9C12}.Release|Any CPU.Build.0 = Release|Any CPU
+		{10C04E08-83C7-4E59-9D88-2689747EC74F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{10C04E08-83C7-4E59-9D88-2689747EC74F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{10C04E08-83C7-4E59-9D88-2689747EC74F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{10C04E08-83C7-4E59-9D88-2689747EC74F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,89 @@
+import { useEffect, useState } from 'react'
+import { Alert, Button, Card, Form, Input, Skeleton, Table, Tag, Typography, message, type TableColumnsType } from 'antd'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
+import { incomeService } from '../services/incomeService'
+import { getApiErrorMessage } from '../services/apiClient'
+import { formatRate } from '../utils/format'
+import type { RetentionRate } from '../types/api'
+import { PermissionCodes } from '../constants/authorization'
+
+interface ProfileForm { name: string }
+interface PasswordForm { currentPassword: string; newPassword: string; confirmPassword: string }
+
+export function SettingsPage() {
+  const auth = useAuth()
+  const navigate = useNavigate()
+  const canReadProfile = auth.hasPermission(PermissionCodes.profileRead)
+  const canEditProfile = auth.hasPermission(PermissionCodes.profileUpdate)
+  const [profileName, setProfileName] = useState('')
+  const [retentionRates, setRetentionRates] = useState<RetentionRate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [form] = Form.useForm<ProfileForm>()
+  const [passwordForm] = Form.useForm<PasswordForm>()
+
+  useEffect(() => {
+    const jobs: Promise<unknown>[] = [incomeService.retentionRates().then(setRetentionRates)]
+    if (canReadProfile) jobs.push(incomeService.profile().then(profile => { setProfileName(profile.name); form.setFieldsValue({ name: profile.name }) }))
+    Promise.all(jobs).catch(requestError => setError(getApiErrorMessage(requestError))).finally(() => setLoading(false))
+  }, [canReadProfile, form])
+
+  const updateProfile = async ({ name }: ProfileForm) => {
+    try {
+      await incomeService.updateProfile(name)
+      setProfileName(name)
+      message.success('Perfil actualizado.')
+    } catch (requestError) { setError(getApiErrorMessage(requestError)) }
+  }
+
+  const changePassword = async (values: PasswordForm) => {
+    if (values.newPassword !== values.confirmPassword) {
+      setError('Las contraseñas nuevas no coinciden.')
+      return
+    }
+    try {
+      await auth.changePassword(values.currentPassword, values.newPassword)
+      message.success('Contraseña actualizada. Inicia sesión nuevamente.')
+      navigate('/login', { replace: true })
+    } catch (requestError) { setError(getApiErrorMessage(requestError)) }
+  }
+
+  const columns: TableColumnsType<RetentionRate> = [
+    { title: 'Año tributario', dataIndex: 'year', key: 'year', render: value => <Typography.Text strong>{value}</Typography.Text> },
+    { title: 'Retención de honorarios', dataIndex: 'percentage', key: 'percentage', render: value => formatRate(value) },
+    { title: 'Origen', key: 'source', render: () => <Tag color="blue">Configuración controlada</Tag> },
+  ]
+
+  return <div className="page-stack">
+    <section className="page-heading"><div><Typography.Text className="eyebrow">PREFERENCIAS Y SEGURIDAD</Typography.Text><Typography.Title level={1}>Configuración.</Typography.Title>
+      <Typography.Paragraph>{canReadProfile ? `Perfil de ${profileName || auth.identity?.userName}.` : 'Parámetros globales de lectura y seguridad de la cuenta.'}</Typography.Paragraph></div></section>
+    {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} />}
+    {loading ? <Skeleton active /> : <>
+      {canReadProfile && <Card className="settings-card" bordered={false}>
+        <div className="section-card-heading"><div><Typography.Text className="eyebrow">PERFIL PROFESIONAL</Typography.Text><Typography.Title level={3}>Tus datos</Typography.Title></div></div>
+        <Form form={form} layout="vertical" onFinish={updateProfile} requiredMark={false}>
+          <Form.Item name="name" label="Nombre del perfil" rules={[{ required: true, whitespace: true }, { max: 200 }]}><Input disabled={!canEditProfile} maxLength={200} /></Form.Item>
+          {canEditProfile && <Button type="primary" htmlType="submit">Guardar perfil</Button>}
+        </Form>
+      </Card>}
+
+      <Card className="settings-card" bordered={false}>
+        <div className="section-card-heading"><div><Typography.Text className="eyebrow">SEGURIDAD</Typography.Text><Typography.Title level={3}>Cambiar contraseña</Typography.Title></div></div>
+        <Typography.Paragraph>Usa al menos 15 caracteres. Al actualizarla, se cerrarán las sesiones activas.</Typography.Paragraph>
+        <Form form={passwordForm} layout="vertical" onFinish={changePassword} requiredMark={false} className="password-form">
+          <Form.Item name="currentPassword" label="Contraseña actual" rules={[{ required: true }]}><Input.Password autoComplete="current-password" /></Form.Item>
+          <Form.Item name="newPassword" label="Nueva contraseña" rules={[{ required: true }, { min: 15, message: 'Usa al menos 15 caracteres.' }]}><Input.Password autoComplete="new-password" /></Form.Item>
+          <Form.Item name="confirmPassword" label="Repetir nueva contraseña" rules={[{ required: true }]}><Input.Password autoComplete="new-password" /></Form.Item>
+          <Button type="primary" htmlType="submit">Actualizar contraseña</Button>
+        </Form>
+      </Card>
+
+      <Card className="settings-card" bordered={false}>
+        <div className="section-card-heading"><div><Typography.Text className="eyebrow">PARÁMETROS ANUALES</Typography.Text><Typography.Title level={3}>Retención de boletas</Typography.Title></div><Tag>Solo lectura</Tag></div>
+        <Typography.Paragraph>Las tasas se administran mediante configuración controlada. Cada período conserva la tasa que tenía al crearse.</Typography.Paragraph>
+        <Table<RetentionRate> rowKey="year" columns={columns} dataSource={retentionRates} pagination={false} />
+      </Card>
+    </>}
+  </div>
+}

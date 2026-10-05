@@ -1,0 +1,55 @@
+services:
+  password-hash:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: tools/PasswordHashTool/Dockerfile
+    image: gestion-honorarios-password-hash:local
+    stdin_open: true
+    tty: true
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gestion-honorarios-api:local
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://+:5000
+      ConnectionStrings__Default: ${ConnectionStrings__Default:?Set ConnectionStrings__Default in backend/.env}
+      Jwt__Issuer: ${Jwt__Issuer:-https://gestion-honorarios.local}
+      Jwt__Audience: ${Jwt__Audience:-gestion-honorarios-api}
+      Jwt__ClientId: ${Jwt__ClientId:-gestion-honorarios-spa}
+      Jwt__PrivateKeyPath: ${Jwt__PrivateKeyPath:-/run/secrets/jwt-private-key.pem}
+      Jwt__KeyId: ${Jwt__KeyId:-local-rsa-key}
+      DataProtection__KeyRingPath: ${DataProtection__KeyRingPath:-/home/app/.aspnet/DataProtection-Keys}
+      DataProtection__CertificatePath: ${DataProtection__CertificatePath:-}
+      DataProtection__PrivateKeyPath: ${DataProtection__PrivateKeyPath:-}
+      Cors__AllowedOrigin: ${Cors__AllowedOrigin:-http://localhost:8080}
+      Cors__AllowedOrigins__0: ${Cors__AllowedOrigins__0:-http://localhost:8080}
+      Cors__AllowedOrigins__1: ${Cors__AllowedOrigins__1:-http://localhost:5173}
+      ForwardedHeaders__KnownProxies__0: 172.30.0.4
+      ForwardedHeaders__KnownProxies__1: 172.30.0.5
+    ports:
+      - "127.0.0.1:${API_PORT:-5000}:5000"
+    volumes:
+      - gestion-honorarios-dp-keys:/home/app/.aspnet/DataProtection-Keys
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:5000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      app-net:
+        aliases:
+          - api
+        ipv4_address: 172.30.0.3
+
+networks:
+  app-net:
+    name: gestion-honorarios-net
+    external: true
+
+volumes:
+  gestion-honorarios-dp-keys:

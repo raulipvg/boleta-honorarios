@@ -1,0 +1,39 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gestion-honorarios-frontend:local
+    restart: unless-stopped
+    environment:
+      API_PROXY_URL: ${API_PROXY_URL:-http://api:5000}
+      NGINX_ENVSUBST_FILTER: ^API_PROXY_URL$
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
+    networks:
+      app-net:
+        ipv4_address: 172.30.0.4
+
+  vite:
+    image: node:24-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    profiles: ["dev"]
+    environment:
+      API_PROXY_URL: ${API_PROXY_URL:-http://api:5000}
+    ports:
+      - "127.0.0.1:${VITE_PORT:-5173}:5173"
+    volumes:
+      - .:/app
+      - frontend-node-modules:/app/node_modules
+    networks:
+      app-net:
+        ipv4_address: 172.30.0.5
+
+volumes:
+  frontend-node-modules:
+
+networks:
+  app-net:
+    name: gestion-honorarios-net
+    external: true

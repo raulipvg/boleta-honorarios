@@ -1,0 +1,21 @@
+services:
+  api:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__PrivateKeyPath: /run/secrets/jwt-signing-key
+      Jwt__PreviousKeys__0__KeyId: ${JWT_PREVIOUS_KEY_ID:-}
+      Jwt__PreviousKeys__0__PublicKeyPath: ${JWT_PREVIOUS_PUBLIC_KEY_PATH:-}
+      DataProtection__CertificatePath: /run/secrets/data-protection-certificate
+      DataProtection__PrivateKeyPath: /run/secrets/data-protection-private-key
+    secrets:
+      - jwt-signing-key
+      - data-protection-certificate
+      - data-protection-private-key
+
+secrets:
+  jwt-signing-key:
+    file: ${JWT_SIGNING_KEY_FILE:?Provide JWT_SIGNING_KEY_FILE through the deployment secret manager}
+  data-protection-certificate:
+    file: ${DATA_PROTECTION_CERTIFICATE_FILE:?Provide DATA_PROTECTION_CERTIFICATE_FILE through the deployment secret manager}
+  data-protection-private-key:
+    file: ${DATA_PROTECTION_PRIVATE_KEY_FILE:?Provide DATA_PROTECTION_PRIVATE_KEY_FILE through the deployment secret manager}

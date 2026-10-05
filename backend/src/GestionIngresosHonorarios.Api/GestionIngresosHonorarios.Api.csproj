@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>GestionIngresosHonorarios.Api</RootNamespace>
+    <UserSecretsId>gestion-ingresos-honorarios-api-local</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GestionIngresosHonorarios.Application\GestionIngresosHonorarios.Application.csproj" />
+    <ProjectReference Include="..\GestionIngresosHonorarios.Domain\GestionIngresosHonorarios.Domain.csproj" />
+    <ProjectReference Include="..\GestionIngresosHonorarios.Infrastructure\GestionIngresosHonorarios.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.OpenApi" />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+  </ItemGroup>
+</Project>
