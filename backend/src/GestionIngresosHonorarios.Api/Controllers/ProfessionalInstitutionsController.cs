@@ -35,6 +35,18 @@ public sealed class ProfessionalInstitutionsController(
         return Created($"/api/professional-institutions/{relation.Id}", relation);
     }
 
+    [HttpPost("quick-create")]
+    [Authorize(Policy = PermissionCatalog.RelationshipsManage)]
+    public async Task<ActionResult<ProfessionalInstitutionDto>> QuickCreate(
+        [FromBody] CreateProfessionalInstitutionPayload payload, CancellationToken cancellationToken)
+    {
+        var relation = await income.CreateAndAddProfessionalInstitutionAsync(
+            await actors.GetAsync(User.GetSubjectId(), cancellationToken), payload.Name, cancellationToken);
+        logger.LogInformation("Profesional {ActorId} creó o reutilizó la institución pública {InstitutionId} en su perfil",
+            User.GetSubjectId(), relation.PublicInstitutionId);
+        return Created($"/api/professional-institutions/{relation.Id}", relation);
+    }
+
     [HttpDelete("{relationId:guid}")]
     [Authorize(Policy = PermissionCatalog.RelationshipsManage)]
     public async Task<IActionResult> Deactivate(Guid relationId, CancellationToken cancellationToken)
@@ -65,4 +77,5 @@ public sealed class ProfessionalInstitutionsController(
 }
 
 public sealed record AddProfessionalInstitutionPayload([param: Required] Guid InstitutionId);
+public sealed record CreateProfessionalInstitutionPayload([param: Required, StringLength(200, MinimumLength = 1)] string Name);
 public sealed record AddHourlyRatePayload([param: Range(1900, 32767)] short Year, [param: Range(0, long.MaxValue)] long HourlyRateClp);

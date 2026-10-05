@@ -25,19 +25,32 @@ public sealed partial class IncomeApplicationService(IApplicationDbContext db) :
 
     public async Task<InstitutionDto> CreateInstitutionAsync(string name, CancellationToken cancellationToken)
     {
-        var institution = new PublicInstitution(name);
+        var (displayName, normalizedName) = await NormalizeInstitutionNameAsync(name, cancellationToken);
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        await AcquireInstitutionNameLockAsync(normalizedName, cancellationToken);
+        if (await _db.PublicInstitutions.AnyAsync(x => x.NormalizedName == normalizedName, cancellationToken))
+            throw AppError.Conflict("Ya existe una institución con ese nombre normalizado.");
+
+        var institution = new PublicInstitution(displayName);
         _db.PublicInstitutions.Add(institution);
         await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return new InstitutionDto(institution.Id, institution.Name, institution.Active);
     }
 
     public async Task<InstitutionDto> UpdateInstitutionAsync(Guid institutionId, string name, bool active, CancellationToken cancellationToken)
     {
+        var (displayName, normalizedName) = await NormalizeInstitutionNameAsync(name, cancellationToken);
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        await AcquireInstitutionNameLockAsync(normalizedName, cancellationToken);
         var institution = await _db.PublicInstitutions.SingleOrDefaultAsync(x => x.Id == institutionId, cancellationToken)
             ?? throw AppError.NotFound();
-        institution.Rename(name);
+        if (await _db.PublicInstitutions.AnyAsync(x => x.Id != institutionId && x.NormalizedName == normalizedName, cancellationToken))
+            throw AppError.Conflict("Ya existe otra institución con ese nombre normalizado.");
+        institution.Rename(displayName);
         institution.SetActive(active);
         await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return new InstitutionDto(institution.Id, institution.Name, institution.Active);
     }
 
@@ -114,6 +127,50 @@ public sealed partial class IncomeApplicationService(IApplicationDbContext db) :
         return new ProfessionalInstitutionDto(relation.Id, institution.Id, institution.Name, relation.Active, Array.Empty<HourlyRateDto>());
     }
 
+    public async Task<ProfessionalInstitutionDto> CreateAndAddProfessionalInstitutionAsync(
+        ActorContext actor, string name, CancellationToken cancellationToken)
+    {
+        if (actor.IsAdministrator) throw AppError.Forbidden();
+        var professionalId = RequireOwnProfessional(actor);
+        var (displayName, normalizedName) = await NormalizeInstitutionNameAsync(name, cancellationToken);
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        await AcquireInstitutionNameLockAsync(normalizedName, cancellationToken);
+
+        var institution = await _db.PublicInstitutions.SingleOrDefaultAsync(
+            x => x.NormalizedName == normalizedName, cancellationToken);
+        if (institution is { Active: false })
+            throw AppError.Conflict("Existe una institución inactiva con ese nombre. Solicita al administrador que revise el catálogo.");
+        if (institution is null)
+        {
+            institution = new PublicInstitution(displayName);
+            _db.PublicInstitutions.Add(institution);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        var relation = await _db.ProfessionalInstitutions.SingleOrDefaultAsync(
+            x => x.ProfessionalId == professionalId && x.PublicInstitutionId == institution.Id, cancellationToken);
+        if (relation is null)
+        {
+            relation = new ProfessionalInstitution(professionalId, institution.Id);
+            _db.ProfessionalInstitutions.Add(relation);
+        }
+        else if (!relation.Active)
+        {
+            relation.SetActive(true);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        var rates = await _db.AnnualHourlyRates.AsNoTracking()
+            .Where(x => x.ProfessionalInstitutionId == relation.Id)
+            .OrderByDescending(x => x.Year).ThenByDescending(x => x.Version)
+            .Select(x => new HourlyRateDto(x.Year, x.Version, x.HourlyRateClp, x.CreatedAt))
+            .ToListAsync(cancellationToken);
+        return new ProfessionalInstitutionDto(relation.Id, institution.Id, institution.Name, relation.Active, rates);
+    }
+
     public async Task RemoveProfessionalInstitutionAsync(ActorContext actor, Guid relationId, CancellationToken cancellationToken)
     {
         var professionalId = RequireOwnProfessional(actor);
@@ -163,6 +220,25 @@ public sealed partial class IncomeApplicationService(IApplicationDbContext db) :
     {
         if (!actor.IsProfessional || actor.ProfessionalId is null) throw AppError.Forbidden();
         return actor.ProfessionalId.Value;
+    }
+
+    private Task<int> AcquireInstitutionNameLockAsync(string normalizedName, CancellationToken cancellationToken) =>
+        _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({normalizedName}, 0))", cancellationToken);
+
+    private async Task<(string DisplayName, string NormalizedName)> NormalizeInstitutionNameAsync(
+        string name, CancellationToken cancellationToken)
+    {
+        var candidate = InstitutionNameNormalizer.NormalizeDisplayName(name);
+        var normalized = await _db.Database.SqlQuery<string>(
+            $"SELECT normalize_public_institution_display_name({candidate}) || chr(31) || normalize_public_institution_name({candidate}) AS \"Value\"")
+            .SingleAsync(cancellationToken);
+        var separator = normalized.IndexOf('\u001f');
+        if (separator <= 0 || separator == normalized.Length - 1)
+            throw AppError.BadRequest("El nombre debe incluir al menos una letra o un número.");
+
+        var displayName = InstitutionNameNormalizer.NormalizeDisplayName(normalized[..separator]);
+        return (displayName, normalized[(separator + 1)..]);
     }
 
     private static Guid ResolveProfessionalId(ActorContext actor, Guid? requestedProfessionalId)

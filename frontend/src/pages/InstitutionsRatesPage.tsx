@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Empty, Form, InputNumber, Select, Skeleton, Space, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Empty, Form, Input, InputNumber, Select, Skeleton, Space, Tag, Typography, message } from 'antd'
 import { incomeService } from '../services/incomeService'
 import { getApiErrorMessage } from '../services/apiClient'
 import { useAuth } from '../hooks/useAuth'
@@ -17,6 +17,8 @@ export function InstitutionsRatesPage() {
   const [catalog, setCatalog] = useState<Institution[]>([])
   const [relations, setRelations] = useState<ProfessionalInstitution[]>([])
   const [institutionId, setInstitutionId] = useState<string>()
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false)
+  const [newInstitutionName, setNewInstitutionName] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -70,6 +72,22 @@ export function InstitutionsRatesPage() {
     } finally { setBusy(false) }
   }
 
+  const quickCreateInstitution = async () => {
+    const name = newInstitutionName.trim()
+    if (!name) return
+    setBusy(true)
+    setError(null)
+    try {
+      await incomeService.createAndAddProfessionalInstitution(name)
+      setNewInstitutionName('')
+      setQuickCreateOpen(false)
+      await reload()
+      message.success('Institución creada o reutilizada y asociada a tu perfil.')
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError))
+    } finally { setBusy(false) }
+  }
+
   const addRate = async (relationId: string, values: { year: number; hourlyRateClp: number }) => {
     setBusy(true)
     setError(null)
@@ -110,13 +128,24 @@ export function InstitutionsRatesPage() {
     {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} />}
 
     {canCreateRelation && <Card className="add-institution-card" bordered={false}>
-      <div className="section-card-heading"><div><Typography.Text className="eyebrow">TU RED DE TRABAJO</Typography.Text><Typography.Title level={3}>Asociar una institución</Typography.Title></div></div>
-      <Space wrap>
+      <div className="section-card-heading"><div><Typography.Text className="eyebrow">TU RED DE TRABAJO</Typography.Text><Typography.Title level={3}>Agregar una institución</Typography.Title></div></div>
+      <Space wrap className="institution-quick-create-row">
         <Select showSearch optionFilterProp="label" placeholder="Selecciona una institución pública"
-          value={institutionId} onChange={setInstitutionId} style={{ minWidth: 320 }}
+          value={institutionId} onChange={setInstitutionId} style={{ width: 320, maxWidth: '100%', minWidth: 0 }}
           options={availableCatalog.map(item => ({ value: item.id, label: item.name }))} />
         <Button type="primary" disabled={!institutionId} loading={busy} onClick={() => void addRelation()}>Asociar a mi perfil</Button>
+        <Button disabled={busy} onClick={() => { setQuickCreateOpen(open => !open); setNewInstitutionName('') }}>
+          {quickCreateOpen ? 'Cancelar nueva' : 'Crear nueva institución'}
+        </Button>
       </Space>
+      {quickCreateOpen && <Space wrap className="institution-quick-create-form">
+        <Input autoFocus aria-label="Nombre de la institución" disabled={busy} maxLength={200} value={newInstitutionName} placeholder="Nombre de la institución"
+          onChange={event => setNewInstitutionName(event.target.value)}
+          onPressEnter={() => void quickCreateInstitution()} style={{ width: 320, maxWidth: '100%' }} />
+        <Button type="primary" disabled={!newInstitutionName.trim()} loading={busy} onClick={() => void quickCreateInstitution()}>
+          Crear y asociar
+        </Button>
+      </Space>}
       {availableCatalog.length === 0 && <Typography.Text type="secondary">No hay otras instituciones activas disponibles en el catálogo.</Typography.Text>}
     </Card>}
 

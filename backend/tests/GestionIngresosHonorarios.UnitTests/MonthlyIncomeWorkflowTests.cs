@@ -1,5 +1,6 @@
 using GestionIngresosHonorarios.Application.Common;
 using GestionIngresosHonorarios.Application.Contracts;
+using GestionIngresosHonorarios.Application.DTOs;
 using GestionIngresosHonorarios.Application.Services;
 using GestionIngresosHonorarios.Domain.Entities;
 using GestionIngresosHonorarios.Infrastructure.Data;
@@ -109,6 +110,80 @@ public sealed class MonthlyIncomeWorkflowTests : IAsyncLifetime
         Assert.Equal(7, olderPage.Records.Count);
         Assert.False(olderPage.HasMoreRecords);
         Assert.Equal(1, olderPage.Records[0].Order);
+    }
+
+    [Fact]
+    public async Task QuickCreateNormalizesReusesAndProtectsTheSharedCatalog()
+    {
+        var actor = new ActorContext(UserId, ProfessionalId, IsAdministrator: false, IsProfessional: true);
+
+        await using (var reuseDb = CreateContext())
+        {
+            var reuseService = new IncomeApplicationService(reuseDb);
+            var relation = await reuseService.CreateAndAddProfessionalInstitutionAsync(actor,
+                " HOSPITAL de integracio\u0301n ", CancellationToken.None);
+
+            Assert.Equal(RelationId, relation.Id);
+            Assert.Equal("Hospital de integración", relation.InstitutionName);
+            Assert.Equal(1, await reuseDb.PublicInstitutions.CountAsync());
+            Assert.Equal("hospital de integracion",
+                await reuseDb.PublicInstitutions.Select(x => x.NormalizedName).SingleAsync());
+        }
+
+        var results = await Task.WhenAll(
+            QuickCreateAsync(actor, "Hospital  Norte"),
+            QuickCreateAsync(actor, " HÓSPITAL - norte "));
+
+        Assert.Equal(results[0].Id, results[1].Id);
+        await using var verificationDb = CreateContext();
+        var institutionId = await verificationDb.PublicInstitutions
+            .Where(x => x.NormalizedName == "hospital norte")
+            .Select(x => x.Id).SingleAsync();
+        Assert.Equal(1, await verificationDb.ProfessionalInstitutions.CountAsync(
+            x => x.ProfessionalId == ProfessionalId && x.PublicInstitutionId == institutionId));
+        const string withEnye = "Cañón";
+        const string withoutEnye = "Canon";
+        var enyeKey = await verificationDb.Database.SqlQuery<string>(
+            $"SELECT normalize_public_institution_name({withEnye}) AS \"Value\"").SingleAsync();
+        var nKey = await verificationDb.Database.SqlQuery<string>(
+            $"SELECT normalize_public_institution_name({withoutEnye}) AS \"Value\"").SingleAsync();
+        Assert.NotEqual(nKey, enyeKey);
+
+        await using (var inactiveDb = CreateContext())
+        {
+            var originalInstitutionId = await inactiveDb.ProfessionalInstitutions
+                .Where(x => x.Id == RelationId).Select(x => x.PublicInstitutionId).SingleAsync();
+            var institution = await inactiveDb.PublicInstitutions.SingleAsync(x => x.Id == originalInstitutionId);
+            institution.SetActive(false);
+            await inactiveDb.SaveChangesAsync();
+        }
+
+        await using var operationDb = CreateContext();
+        var service = new IncomeApplicationService(operationDb);
+        var conflict = await Assert.ThrowsAsync<GestionIngresosHonorarios.Application.Common.ApplicationException>(
+            () => service.CreateAndAddProfessionalInstitutionAsync(actor, "HOSPITAL DE INTEGRACION", CancellationToken.None));
+
+        Assert.Equal(409, conflict.StatusCode);
+        Assert.Equal(2, await operationDb.PublicInstitutions.CountAsync());
+        Assert.Equal(2, await operationDb.ProfessionalInstitutions.CountAsync(x => x.ProfessionalId == ProfessionalId));
+
+        var administrator = new ActorContext(UserId, ProfessionalId, IsAdministrator: true, IsProfessional: false);
+        var forbidden = await Assert.ThrowsAsync<GestionIngresosHonorarios.Application.Common.ApplicationException>(
+            () => service.CreateAndAddProfessionalInstitutionAsync(administrator, "Hospital nuevo", CancellationToken.None));
+
+        Assert.Equal(403, forbidden.StatusCode);
+
+        var administratorConflict = await Assert.ThrowsAsync<GestionIngresosHonorarios.Application.Common.ApplicationException>(
+            () => new IncomeApplicationService(operationDb).CreateInstitutionAsync("HOSPITAL - norte", CancellationToken.None));
+
+        Assert.Equal(409, administratorConflict.StatusCode);
+    }
+
+    private async Task<ProfessionalInstitutionDto> QuickCreateAsync(ActorContext actor, string name)
+    {
+        await using var db = CreateContext();
+        return await new IncomeApplicationService(db)
+            .CreateAndAddProfessionalInstitutionAsync(actor, name, CancellationToken.None);
     }
 
     private AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>()

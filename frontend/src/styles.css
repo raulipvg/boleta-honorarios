@@ -129,6 +129,9 @@ a { color: inherit; }
 .institution-totals .net-line strong { color: #167d78; font-size: 14px; }
 .add-institution-card { display: flex; align-items: center; min-height: 77px; }
 .add-institution-card .ant-card-body { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; width: 100%; }
+.add-institution-card .section-card-heading, .institution-quick-create-row, .institution-quick-create-form { flex-basis: 100%; }
+.institution-quick-create-row, .institution-quick-create-form { width: 100%; }
+.institution-quick-create-form { margin-top: -3px; }
 .add-institution-card > .ant-card-body > .ant-typography-secondary { flex-basis: 100%; padding-left: 2px; font-size: 11px; }
 .empty-period { padding: 16px; }
 

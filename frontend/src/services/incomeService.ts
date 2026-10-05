@@ -39,6 +39,9 @@ export const incomeService = {
   async addProfessionalInstitution(institutionId: string) {
     return (await apiClient.post<ProfessionalInstitution>('/professional-institutions', { institutionId })).data
   },
+  async createAndAddProfessionalInstitution(name: string) {
+    return (await apiClient.post<ProfessionalInstitution>('/professional-institutions/quick-create', { name })).data
+  },
   async deactivateProfessionalInstitution(id: string) {
     await apiClient.delete(`/professional-institutions/${id}`)
   },

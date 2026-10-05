@@ -14,6 +14,7 @@ public interface IIncomeApplicationService
     Task<ProfessionalProfileDto> UpdateProfileAsync(ActorContext actor, string name, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProfessionalInstitutionDto>> GetProfessionalInstitutionsAsync(ActorContext actor, Guid? professionalId, CancellationToken cancellationToken);
     Task<ProfessionalInstitutionDto> AddProfessionalInstitutionAsync(ActorContext actor, Guid institutionId, CancellationToken cancellationToken);
+    Task<ProfessionalInstitutionDto> CreateAndAddProfessionalInstitutionAsync(ActorContext actor, string name, CancellationToken cancellationToken);
     Task RemoveProfessionalInstitutionAsync(ActorContext actor, Guid relationId, CancellationToken cancellationToken);
     Task<IReadOnlyList<HourlyRateDto>> GetHourlyRatesAsync(ActorContext actor, Guid relationId, short? year, CancellationToken cancellationToken);
     Task<HourlyRateDto> AddHourlyRateVersionAsync(ActorContext actor, Guid relationId, short year, long hourlyRateClp, CancellationToken cancellationToken);

@@ -142,10 +142,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
             entity.Property(x => x.Name).HasColumnName("nombre").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.NormalizedName).HasColumnName("nombre_normalizado")
+                .HasColumnType("text")
+                .HasComputedColumnSql("normalize_public_institution_name(nombre)", stored: true);
             entity.Property(x => x.Active).HasColumnName("activa").HasDefaultValue(true);
             entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
             entity.HasIndex(x => new { x.Active, x.Name });
+            entity.HasIndex(x => x.NormalizedName).IsUnique();
         });
 
         builder.Entity<ProfessionalInstitution>(entity =>
