@@ -37,6 +37,7 @@ La tasa global oficial inicial se fija en `db/002_catalog_seed.sql`: **15,25 % p
 
 ## Desarrollo y verificaciones
 
+- Backend local sin contenedor: completar `src/GestionIngresosHonorarios.Api/appsettings.Development.json` (si no existe, copiar ahí el archivo `.example` desde el explorador o el editor) con `APP_DB_USER` y `APP_DB_PASSWORD` de `db/.env`; ajustar base y puerto si se personalizaron. El archivo local está excluido de Git. Con PostgreSQL arriba, desde `backend/` ejecutar `dotnet watch --project .\src\GestionIngresosHonorarios.Api\GestionIngresosHonorarios.Api.csproj run`; Swagger queda en `http://localhost:5000/swagger` y `/health/ready` comprueba la conexión.
 - Backend: `dotnet tool restore`, `dotnet build GestionIngresosHonorarios.sln -c Release`, `dotnet test GestionIngresosHonorarios.sln -c Release` desde `backend/`. La prueba de integración crea un PostgreSQL efímero con Testcontainers y requiere Docker.
 - Migraciones: `dotnet ef migrations add <Nombre> --project src/GestionIngresosHonorarios.Infrastructure --startup-project tools/PasswordHashTool --configuration Release` desde `backend/`. Aplicar migraciones mediante un procedimiento explícito; no se ejecutan automáticamente al iniciar producción.
 - Frontend: Node.js 24, `npm ci`, `npm run lint`, `npm run typecheck`, `npm run build` desde `frontend/`.

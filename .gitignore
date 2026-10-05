@@ -10,6 +10,7 @@ secrets/
 **/bin/
 **/obj/
 **/TestResults/
+/backend/src/GestionIngresosHonorarios.Api/appsettings.Development.json
 *.user
 *.suo
 
