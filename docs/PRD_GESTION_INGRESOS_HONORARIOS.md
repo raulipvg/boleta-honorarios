@@ -1,6 +1,6 @@
 # PRD — Gestión de ingresos por honorarios para profesionales de la salud
 
-**Versión:** 0.8
+**Versión:** 0.10
 **Alcance:** Sistema público
 **Estado:** Definición inicial de producto
 
@@ -359,21 +359,21 @@ El MVP puede organizarse en cinco áreas principales:
 
 ### Dashboard — tabla y evolución del líquido
 
-El Dashboard permite analizar el líquido por institución a través de los meses y años, con una presentación tipo planilla como vista principal y un gráfico lineal complementario. No se usa gráfico circular.
+El Dashboard permite analizar el líquido por institución a través de meses y años. La vista principal es una tabla tipo planilla; un gráfico lineal la complementa. No se utiliza gráfico circular.
 
-#### Filtros
+#### Filtros y alcance
 
-- Intervalo de años seleccionado; los meses aparecen agrupados bajo cada año.
-- Instituciones: todas o selección de una o varias.
-- `PROFESIONAL` siempre consulta su propio perfil. `ADMINISTRADOR` selecciona un profesional; no se consolidan ingresos de personas distintas.
+- Seleccionar un intervalo de años; las filas se agrupan por año y mes.
+- Filtrar por todas las instituciones o por una o varias instituciones.
+- `PROFESIONAL` consulta sus propios datos. `ADMINISTRADOR` selecciona un profesional; no se agregan ingresos de personas distintas.
 
 #### Tabla mensual
 
-- Una fila por mes y año, ordenada cronológicamente.
-- Una columna por institución incluida en el intervalo y un total líquido mensual.
-- Cada celda institucional muestra el líquido CLP sin decimales y su participación en el líquido total del mes. El porcentaje se calcula como `líquido institucional / líquido mensual × 100`; no se almacena. La precisión visual del porcentaje queda por definir, con una cifra decimal como recomendación.
-- La columna total muestra el líquido mensual consolidado.
-- Mes sin `PERIODO_MENSUAL`: mostrar hueco/sin dato. Si el período existe pero no tiene una relación con una institución, mostrar CLP $0 para esa institución. Si el total mensual es cero, mostrar `—` para el porcentaje.
+- Una fila por cada mes del intervalo, ordenada cronológicamente, una columna por institución y una columna de total líquido mensual.
+- Cada celda institucional muestra el importe líquido en CLP sin decimales y su participación sobre el total líquido de ese mes, por ejemplo `$1.120.815 · 63,0 %`.
+- El porcentaje se calcula al presentar la tabla: `líquido institucional / líquido mensual × 100`; no se persiste. La precisión visual queda por definir, con una cifra decimal como recomendación.
+- El total mensual es la suma de los líquidos institucionales y debe coincidir con `PERIODO_MENSUAL.liquido_total_clp`.
+- Si no existe `PERIODO_MENSUAL`, mostrar hueco/sin dato. Si el período existe pero una institución no está vinculada, mostrar CLP $0. Si el total es cero, mostrar `—` como porcentaje.
 
 Ejemplo para septiembre de 2026:
 
@@ -383,13 +383,12 @@ Ejemplo para septiembre de 2026:
 
 #### Gráfico lineal
 
-- Eje horizontal: meses consecutivos dentro del intervalo seleccionado.
-- Eje vertical: líquido CLP.
-- Una serie por institución y una serie consolidada del total mensual.
-- Aplica los mismos filtros de institución y profesional que la tabla.
-- Un mes sin período registrado aparece como hueco; un período existente sin ingresos se representa como cero.
+- Eje horizontal: meses consecutivos del intervalo seleccionado; eje vertical: líquido CLP.
+- Una serie por institución y una serie para el total mensual.
+- Usa los mismos filtros de intervalo, institución y profesional que la tabla.
+- Un mes sin período aparece como hueco/sin dato; un período existente sin ingresos se representa como cero.
 
-La tabla y el gráfico consultan `PERIODO_INSTITUCION.liquido_total_clp` y `PERIODO_MENSUAL.liquido_total_clp`. Reutilizan los totales persistidos y las versiones históricas ya aplicadas; no recalculan períodos antiguos con tarifas o tasas actuales. La suma institucional de cada fila debe coincidir con su total mensual.
+La tabla y el gráfico leen `PERIODO_INSTITUCION.liquido_total_clp` y `PERIODO_MENSUAL.liquido_total_clp`. Reutilizan los totales persistidos y las versiones históricas aplicadas; no recalculan períodos anteriores con tarifas o tasas actuales. No se agrega una tabla de analítica.
 
 ## 16. Fuera del alcance del MVP
 
@@ -402,10 +401,10 @@ La tabla y el gráfico consultan `PERIODO_INSTITUCION.liquido_total_clp` y `PERI
 
 ## 17. Métricas futuras
 
-El MVP incluye la tabla multi-año de líquido mensual por institución, su participación mensual y el gráfico lineal por institución más el total. Se consideran posteriores estas analíticas adicionales:
+El MVP incluye la tabla multi-año de líquido mensual por institución y el gráfico lineal por institución más el total. Se consideran posteriores estas analíticas adicionales:
 
 - Comparación automática con el mes anterior o con el mismo mes de años previos.
-- Participación porcentual acumulada por institución para un año o rango completo.
+- Participación porcentual acumulada por institución para todo un año o intervalo.
 - Valor líquido promedio por hora y ranking de instituciones por ingresos.
 - Proyección de ingresos y horas.
 - Exportación de resultados a CSV.
@@ -425,6 +424,7 @@ Project gestion_ingresos_honorarios {
 Table usuarios {
   id uuid [pk]
   identity_subject varchar(255) [not null, unique]
+  password_hash text [note: 'Hash administrado por ASP.NET Core Identity; nullable si la autenticación se delega a OIDC. Nunca guardar la contraseña en claro.']
   activo boolean [not null, default: true]
   created_at timestamptz [not null]
 }
@@ -598,7 +598,7 @@ La autorización se resuelve en el backend mediante reglas asociadas a `ADMINIST
 
 | Entidad | Atributos principales | Propósito |
 |---|---|---|
-| `USUARIO` | `id`, `identity_subject`, `activo` | Identidad autenticada; puede tener varios roles. |
+| `USUARIO` | `id`, `identity_subject`, `password_hash` opcional, `activo` | Identidad autenticada; puede tener varios roles. La contraseña solo se conserva como hash de ASP.NET Core Identity, nunca en texto claro. |
 | `PROFESIONAL` | `id`, `usuario_id` único, datos del perfil | Perfil propio de una cuenta con rol profesional. |
 | `ROL`, `USUARIO_ROL` | Código y asignaciones | Roles `ADMINISTRADOR` y `PROFESIONAL`; una cuenta puede tener ambos. |
 | `INSTITUCION_PUBLICA` | `id`, nombre, estado | Catálogo global de lectura para profesionales; lo administra el Administrador. |
