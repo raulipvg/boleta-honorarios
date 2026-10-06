@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Card, Empty, Select, Skeleton, Table, Tag, Typography, type TableColumnsType } from 'antd'
-import { incomeService } from '../services/incomeService'
+import { dashboardService } from '../services/dashboard/dashboardService'
+import { professionalService } from '../services/professionals/professionalService'
+import { professionalInstitutionService } from '../services/professional-institutions/professionalInstitutionService'
 import { getApiErrorMessage } from '../services/apiClient'
 import { formatClp, formatParticipation } from '../utils/format'
 import { useAuth } from '../hooks/useAuth'
@@ -24,14 +26,14 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!isAdmin) return
-    incomeService.professionals().then(setProfessionals).catch(requestError => setError(getApiErrorMessage(requestError)))
+    professionalService.list().then(setProfessionals).catch(requestError => setError(getApiErrorMessage(requestError)))
   }, [isAdmin])
 
   useEffect(() => {
     if (isAdmin && !professionalId) {
       return
     }
-    incomeService.professionalInstitutions(isAdmin ? professionalId : undefined)
+    professionalInstitutionService.list(isAdmin ? professionalId : undefined)
       .then(relations => setAvailableInstitutions(relations.map(relation => ({ id: relation.publicInstitutionId, name: relation.institutionName }))))
       .catch(requestError => setError(getApiErrorMessage(requestError)))
   }, [isAdmin, professionalId])
@@ -41,7 +43,7 @@ export function DashboardPage() {
       return
     }
     let active = true
-    incomeService.dashboard({ fromYear, toYear, professionalId: isAdmin ? professionalId : undefined, institutionIds })
+    dashboardService.dashboard({ fromYear, toYear, professionalId: isAdmin ? professionalId : undefined, institutionIds })
       .then(result => { if (active) { setError(null); setData(result) } })
       .catch(requestError => { if (active) setError(getApiErrorMessage(requestError)) })
       .finally(() => { if (active) setLoading(false) })

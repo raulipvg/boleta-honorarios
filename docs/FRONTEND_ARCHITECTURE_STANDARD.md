@@ -13,7 +13,7 @@ Los nombres `<modulo>` y `<feature>` son placeholders, no funcionalidades que de
 - **Tipos React:** `@types/react` y `@types/react-dom` de la línea 19, compatibles con React 19.1.0.
 - **Componentes UI:** Ant Design 6.6.5.
 - **Routing:** React Router 7.13.0.
-- **Cliente HTTP:** Axios 1.20.0 mediante cliente(s) centralizados.
+- **Cliente HTTP:** Axios 1.20.0 mediante un cliente HTTP centralizado y compartido por los servicios de dominio.
 - **Fechas y horas:** Day.js 1.11.23 mediante utilidades compartidas.
 - **Realtime opcional:** `@microsoft/signalr` 10.0.0 solo cuando existan requisitos de tiempo real.
 - **Servidor estático y reverse proxy de producción:** Nginx `1.30.5-alpine`, fijado en la imagen Docker como `nginx:1.30.5-alpine`.
@@ -24,8 +24,8 @@ Las versiones indicadas son el baseline acordado para nuevos proyectos. Node.js 
 ## 2. Responsabilidades y límites de seguridad
 
 - Presentar interfaz, navegación y estados de carga/error.
-- Organizar pantallas, servicios y componentes por funcionalidades requeridas.
-- Consumir el backend ASP.NET Core mediante servicios tipados y un cliente HTTP centralizado.
+- Organizar pantallas, servicios y componentes por funcionalidades y dominios funcionales cohesivos.
+- Consumir el backend ASP.NET Core mediante servicios tipados por dominio y un cliente HTTP compartido.
 - Mantener el access token y el estado de identidad solo en memoria.
 - Administrar UX de sesión, refresh, logout y rutas privadas sin pretender reemplazar autenticación ni autorización del backend.
 - No decidir permisos de negocio de forma autoritativa en el cliente; el backend verifica cada operación y objeto.
@@ -64,7 +64,10 @@ frontend/
     ├── routes/
     ├── services/
     │   ├── apiClient.ts
-    │   ├── authService.ts
+    │   ├── auth/
+    │   │   └── authService.ts
+    │   ├── <dominio>/
+    │   │   └── <dominio>Service.ts
     │   └── realtime/                    # opcional
     ├── types/
     │   └── authorization.ts
@@ -84,11 +87,22 @@ Las pantallas y funcionalidades pueden agruparse por módulo cuando eso facilite
 - `pages/`: pantallas por módulo o funcionalidad.
 - `context/AuthContext.tsx`: estado en memoria, identidad, carga inicial y operaciones de autenticación.
 - `hooks/useAuthorization.ts` y `components/authorization/Can.tsx`: consultan permisos efectivos para rutas, menús y componentes sin duplicar reglas.
-- `services/apiClient.ts`: configura Axios, base URL, Bearer token, CSRF y errores HTTP comunes.
-- `services/authService.ts`: contrato de login, refresh, logout, CSRF y consulta de identidad.
+- `services/apiClient.ts`: configura el transporte HTTP compartido, base URL, Bearer token, CSRF y errores comunes.
+- `services/auth/authService.ts`: contrato de autenticación del navegador, como login, restauración de sesión y logout.
+- `services/<dominio>/<dominio>Service.ts`: expone operaciones HTTP tipadas de un dominio funcional cohesivo mediante el cliente compartido.
 - `utils/date.ts`: concentra parseo, comparación, serialización y presentación de fechas con Day.js.
 - `ProtectedRoute.tsx`: controla navegación por autenticación/roles/permisos como UX; no es una barrera de seguridad de API.
 - `types/`, `constants/`, `hooks/` y `utils/`: elementos realmente compartidos y libres de secretos.
+
+### Servicios organizados por dominio
+
+- Un dominio frontend representa una capacidad funcional cohesiva de la aplicación. No tiene que corresponder uno a uno con un módulo, controller o proyecto del backend, ni implica adoptar Domain-Driven Design en el cliente.
+- Agrupar en un mismo servicio las operaciones de API que pertenecen a esa capacidad. No crear un servicio único que mezcle dominios no relacionados, un servicio por pantalla ni un archivo por endpoint.
+- Un servicio traduce operaciones tipadas del frontend al contrato HTTP: rutas relativas, parámetros, payloads y respuestas. Mantenerlo enfocado en acceso a API; no debe importar React ni contener estado de UI, presentación, autorización de negocio o reglas propias del producto.
+- Dejar que los errores HTTP se propaguen al consumidor para que la funcionalidad decida cómo presentarlos; no ocultarlos ni convertirlos en éxitos desde el servicio.
+- Los servicios de dominio usan `apiClient.ts`; no crean clientes Axios, interceptores ni políticas de sesión propios. La autenticación puede exponer sus operaciones en `services/auth/`, manteniendo el transporte y las políticas comunes en el cliente compartido.
+- Una pantalla o un hook de funcionalidad puede coordinar llamadas de varios servicios. Como regla, un servicio de dominio no debe importar ni coordinar otros servicios de dominio. Si existe una orquestación reutilizable que no pertenece a la UI, identificarla explícitamente en vez de esconderla en un servicio genérico.
+- Importar el servicio del dominio que se necesita. Evitar un servicio fachada global que vuelva a mezclar o reexportar operaciones de dominios distintos.
 
 ## 4. Organización de una funcionalidad
 
@@ -102,7 +116,7 @@ src/pages/<modulo>/
 └── utils.ts                   # opcional
 ```
 
-La página compone la vista; los hooks encapsulan interacciones de UI; los servicios son el límite de comunicación con la API; los componentes son preferentemente presentacionales. No introducir una capa global o abstracción nueva hasta observar una necesidad real.
+La página compone la vista; los hooks encapsulan interacciones de UI; los servicios por dominio son el límite de comunicación con la API; los componentes son preferentemente presentacionales. Una página o hook puede coordinar varios servicios para una funcionalidad sin trasladar esa composición a un servicio global. No introducir una capa global o abstracción nueva hasta observar una necesidad real.
 
 ## 5. Routing, estado y API
 
@@ -113,7 +127,7 @@ La página compone la vista; los hooks encapsulan interacciones de UI; los servi
 - Por defecto el navegador consume la API en el mismo origen mediante `/api`; Nginx reenvía ese path al backend .NET.
 - `API_PROXY_URL` configura en tiempo de ejecución el upstream interno de Nginx, por ejemplo `http://api:5000`; no es un secreto y no se incluye en el bundle.
 - `VITE_API_URL` solo se define cuando un despliegue necesita una URL pública directa distinta; nunca contiene secretos ni credenciales.
-- El servicio normaliza el prefijo `/api` en un solo sitio. No duplicar prefijos entre `.env` y cada endpoint.
+- `apiClient` normaliza el prefijo `/api` en un solo sitio. Los servicios por dominio usan rutas relativas y no repiten ese prefijo.
 - Durante desarrollo, Vite puede proxyar `/api` al backend para conservar una URL de navegador equivalente a producción.
 - El cliente centralizado aplica timeout razonable, `Authorization: Bearer` solo cuando hay access token en memoria, CSRF header cuando corresponda y mapeo estable de errores.
 - Al servir SPA y API en el mismo origen mediante Nginx, no se requiere CORS para ese flujo. Si hay acceso cross-origin explícito, el backend permite solo orígenes exactos y credenciales necesarias; nunca wildcard con credenciales.
@@ -267,15 +281,16 @@ Los controles de OWASP API Security Top 10 (autorización por objeto/campo/funci
 ## 12. Checklist para nuevas funcionalidades
 
 1. Leer estructura, dependencias, rutas y convenciones antes de modificar.
-2. Derivar páginas, formularios, servicios y tipos de requisitos reales.
-3. Consumir API solo mediante cliente/servicios centralizados.
-4. No guardar tokens ni asumir que `ProtectedRoute` protege backend.
-5. Declarar los permisos de ruta y componente a partir de la matriz aprobada; no inferirlos del nombre del rol.
-6. Enviar antiforgery donde el contrato cookie lo requiera y controlar orígenes.
-7. Evitar contenido HTML no confiable, secretos y datos sensibles en logs.
-8. Manejar carga, `401`, `403` y errores sin bucles de retry.
-9. Probar build, lint y permisos UI; mantener lockfile y revisar dependencias introducidas.
-10. No crear páginas o módulos de ejemplo no solicitados ni realizar reorganizaciones ajenas.
+2. Derivar páginas, formularios, servicios por dominio y tipos de requisitos reales.
+3. Antes de añadir una llamada HTTP, identificar el dominio propietario y ampliar su servicio existente si corresponde; no crear un servicio catch-all, uno por pantalla ni uno por endpoint.
+4. Consumir API mediante los servicios de dominio y el cliente HTTP compartido; coordinar varios dominios desde la funcionalidad que los usa.
+5. No guardar tokens ni asumir que `ProtectedRoute` protege backend.
+6. Declarar los permisos de ruta y componente a partir de la matriz aprobada; no inferirlos del nombre del rol.
+7. Enviar antiforgery donde el contrato cookie lo requiera y controlar orígenes.
+8. Evitar contenido HTML no confiable, secretos y datos sensibles en logs.
+9. Manejar carga, `401`, `403` y errores sin bucles de retry.
+10. Probar build, lint y permisos UI; mantener lockfile y revisar dependencias introducidas.
+11. No crear páginas o módulos de ejemplo no solicitados ni realizar reorganizaciones ajenas.
 
 ## 13. Directrices para agentes de desarrollo
 
@@ -289,6 +304,7 @@ Al utilizar este documento como contexto:
 6. Mantener secretos fuera del bundle y de toda variable `VITE_*`.
 7. No afirmar que un guard, permiso de componente o menú oculto reemplaza autorización de backend.
 8. Ejecutar y reportar las pruebas/build afectados sin refactors no solicitados.
+9. Al añadir o mover una llamada HTTP, respetar el límite del dominio funcional existente, usar `apiClient` y revisar consumidores antes de crear otro servicio o una fachada global.
 
 Este estándar describe un baseline para nuevos frontends React conectados a ASP.NET Core. Para este sistema fija los roles `ADMINISTRADOR` y `PROFESIONAL`, pero la matriz de permisos, módulos y rutas de negocio solo se deriva de requisitos explícitos.
 

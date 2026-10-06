@@ -1,5 +1,5 @@
-import { apiClient, getCsrfToken, setAccessToken } from './apiClient'
-import type { AuthIdentity, AuthToken } from '../types/api'
+import { apiClient, getCsrfToken, setAccessToken } from '../apiClient'
+import type { AuthIdentity, AuthToken } from '../../types/api'
 
 let restoringSession: Promise<{ token: AuthToken; identity: AuthIdentity }>|null = null
 

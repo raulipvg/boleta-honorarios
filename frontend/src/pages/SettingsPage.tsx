@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Alert, App as AntdApp, Button, Card, Col, Form, Input, Row, Skeleton, Table, Tag, Typography, type TableColumnsType } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { incomeService } from '../services/incomeService'
+import { profileService } from '../services/profile/profileService'
+import { retentionService } from '../services/configuration/retentionService'
 import { getApiErrorMessage } from '../services/apiClient'
 import { formatRate } from '../utils/format'
 import type { RetentionRate } from '../types/api'
@@ -25,14 +26,14 @@ export function SettingsPage() {
   const [passwordForm] = Form.useForm<PasswordForm>()
 
   useEffect(() => {
-    const jobs: Promise<unknown>[] = [incomeService.retentionRates().then(setRetentionRates)]
-    if (canReadProfile) jobs.push(incomeService.profile().then(profile => { setProfileName(profile.name); form.setFieldsValue({ name: profile.name }) }))
+    const jobs: Promise<unknown>[] = [retentionService.list().then(setRetentionRates)]
+    if (canReadProfile) jobs.push(profileService.get().then(profile => { setProfileName(profile.name); form.setFieldsValue({ name: profile.name }) }))
     Promise.all(jobs).catch(requestError => setError(getApiErrorMessage(requestError))).finally(() => setLoading(false))
   }, [canReadProfile, form])
 
   const updateProfile = async ({ name }: ProfileForm) => {
     try {
-      await incomeService.updateProfile(name)
+      await profileService.update(name)
       setProfileName(name)
       message.success('Perfil actualizado.')
     } catch (requestError) { setError(getApiErrorMessage(requestError)) }

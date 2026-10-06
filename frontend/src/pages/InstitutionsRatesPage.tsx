@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckOutlined, CloseOutlined, DisconnectOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons'
 import { Alert, App as AntdApp, Button, Card, Col, Empty, Flex, Form, Input, InputNumber, Row, Select, Skeleton, Space, Tag, Tooltip, Typography } from 'antd'
 import type { InputNumberProps } from 'antd'
-import { incomeService } from '../services/incomeService'
+import { institutionService } from '../services/institutions/institutionService'
+import { professionalService } from '../services/professionals/professionalService'
+import { professionalInstitutionService } from '../services/professional-institutions/professionalInstitutionService'
 import { getApiErrorMessage } from '../services/apiClient'
 import { useAuth } from '../hooks/useAuth'
 import { PermissionCodes, RoleCodes } from '../constants/authorization'
@@ -36,23 +38,23 @@ export function InstitutionsRatesPage() {
   const reload = useCallback(async () => {
     const relationPromise = isAdmin && !professionalId
       ? Promise.resolve([] as ProfessionalInstitution[])
-      : incomeService.professionalInstitutions(isAdmin ? professionalId : undefined)
-    const [institutionOptions, professionalRelations] = await Promise.all([incomeService.institutions(), relationPromise])
+      : professionalInstitutionService.list(isAdmin ? professionalId : undefined)
+    const [institutionOptions, professionalRelations] = await Promise.all([institutionService.list(), relationPromise])
     setCatalog(institutionOptions)
     setRelations(professionalRelations)
   }, [isAdmin, professionalId])
 
   useEffect(() => {
     if (!isAdmin) return
-    incomeService.professionals().then(setProfessionals).catch(requestError => setError(getApiErrorMessage(requestError)))
+    professionalService.list().then(setProfessionals).catch(requestError => setError(getApiErrorMessage(requestError)))
   }, [isAdmin])
 
   useEffect(() => {
     let active = true
     const relationPromise = isAdmin && !professionalId
       ? Promise.resolve([] as ProfessionalInstitution[])
-      : incomeService.professionalInstitutions(isAdmin ? professionalId : undefined)
-    Promise.all([incomeService.institutions(), relationPromise])
+      : professionalInstitutionService.list(isAdmin ? professionalId : undefined)
+    Promise.all([institutionService.list(), relationPromise])
       .then(([institutionOptions, professionalRelations]) => {
         if (!active) return
         setCatalog(institutionOptions)
@@ -73,7 +75,7 @@ export function InstitutionsRatesPage() {
     setBusy(true)
     setError(null)
     try {
-      await incomeService.addProfessionalInstitution(institutionId)
+      await professionalInstitutionService.add(institutionId)
       setInstitutionId(undefined)
       await reload()
       message.success('Institución asociada a tu perfil.')
@@ -88,7 +90,7 @@ export function InstitutionsRatesPage() {
     setBusy(true)
     setError(null)
     try {
-      await incomeService.createAndAddProfessionalInstitution(name)
+      await professionalInstitutionService.createAndAdd(name)
       setNewInstitutionName('')
       setQuickCreateOpen(false)
       await reload()
@@ -102,7 +104,7 @@ export function InstitutionsRatesPage() {
     setBusy(true)
     setError(null)
     try {
-      await incomeService.addRate(relationId, values.year, values.hourlyRateClp)
+      await professionalInstitutionService.addRate(relationId, values.year, values.hourlyRateClp)
       await reload()
       message.success('Nueva versión de tarifa publicada. Los períodos existentes conservan su valor aplicado.')
     } catch (requestError) {
@@ -113,7 +115,7 @@ export function InstitutionsRatesPage() {
   const deactivate = async (relationId: string) => {
     setBusy(true)
     try {
-      await incomeService.deactivateProfessionalInstitution(relationId)
+      await professionalInstitutionService.deactivate(relationId)
       await reload()
       message.success('Relación desactivada. El historial mensual se conserva.')
     } catch (requestError) { setError(getApiErrorMessage(requestError)) }

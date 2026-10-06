@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { authService } from '../services/authService'
+import { authService } from '../services/auth/authService'
 import { setAccessToken } from '../services/apiClient'
-import { clearLogoutPending, hasPendingLogout, markLogoutPending } from '../services/logoutState'
+import { clearLogoutPending, hasPendingLogout, markLogoutPending } from '../services/auth/logoutState'
 import type { AuthIdentity } from '../types/api'
 import { AuthContext, type AuthContextValue, type AuthStatus } from './auth-context'
 

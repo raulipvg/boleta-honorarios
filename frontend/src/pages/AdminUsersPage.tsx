@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Alert, App as AntdApp, Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd'
-import { incomeService } from '../services/incomeService'
+import { adminUserService } from '../services/administration/adminUserService'
 import { getApiErrorMessage } from '../services/apiClient'
 import type { AccountSummary } from '../types/api'
 import { RoleCodes } from '../constants/authorization'
@@ -23,10 +23,10 @@ export function AdminUsersPage() {
   const [createForm] = Form.useForm<NewAccountForm>()
   const [resetForm] = Form.useForm<{ temporaryPassword: string }>()
 
-  const reload = async () => setAccounts(await incomeService.users())
+  const reload = async () => setAccounts(await adminUserService.list())
   useEffect(() => {
     let active = true
-    incomeService.users()
+    adminUserService.list()
       .then(result => { if (active) setAccounts(result) })
       .catch(requestError => { if (active) setError(getApiErrorMessage(requestError)) })
       .finally(() => { if (active) setLoading(false) })
@@ -37,7 +37,7 @@ export function AdminUsersPage() {
     setSubmitting(true)
     setError(null)
     try {
-      await incomeService.createUser(values)
+      await adminUserService.create(values)
       await reload()
       createForm.resetFields()
       setRoles([])
@@ -51,7 +51,7 @@ export function AdminUsersPage() {
     setSubmitting(true)
     setError(null)
     try {
-      await incomeService.resetUserPassword(resetAccount.id, values.temporaryPassword)
+      await adminUserService.resetPassword(resetAccount.id, values.temporaryPassword)
       await reload()
       setResetAccount(null)
       resetForm.resetFields()

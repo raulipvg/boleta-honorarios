@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Alert, App as AntdApp, Button, Card, Form, Input, Switch, Table, Tag, Typography, type TableColumnsType } from 'antd'
-import { incomeService } from '../services/incomeService'
+import { institutionService } from '../services/institutions/institutionService'
 import { getApiErrorMessage } from '../services/apiClient'
 import type { Institution } from '../types/api'
 
@@ -12,10 +12,10 @@ export function AdminInstitutionsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [form] = Form.useForm<{ name: string }>()
 
-  const reload = async () => setItems(await incomeService.institutions())
+  const reload = async () => setItems(await institutionService.list())
   useEffect(() => {
     let active = true
-    incomeService.institutions()
+    institutionService.list()
       .then(result => { if (active) setItems(result) })
       .catch(requestError => { if (active) setError(getApiErrorMessage(requestError)) })
       .finally(() => { if (active) setLoading(false) })
@@ -26,7 +26,7 @@ export function AdminInstitutionsPage() {
     setSubmitting(true)
     setError(null)
     try {
-      await incomeService.createInstitution(name)
+      await institutionService.create(name)
       form.resetFields()
       await reload()
       message.success('Institución agregada al catálogo público.')
@@ -36,7 +36,7 @@ export function AdminInstitutionsPage() {
 
   const toggle = async (item: Institution, active: boolean) => {
     try {
-      await incomeService.updateInstitution(item.id, item.name, active)
+      await institutionService.update(item.id, item.name, active)
       await reload()
     } catch (requestError) { setError(getApiErrorMessage(requestError)) }
   }

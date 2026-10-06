@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import { CloseOutlined, PlusOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Col, DatePicker, Empty, Input, Modal, Popconfirm, Row, Select, Skeleton, Space, Tag, Typography, type InputRef } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
-import { incomeService } from '../services/incomeService'
+import { periodService } from '../services/periods/periodService'
+import { hourRecordService } from '../services/hours/hourRecordService'
+import { professionalService } from '../services/professionals/professionalService'
+import { professionalInstitutionService } from '../services/professional-institutions/professionalInstitutionService'
 import { getApiErrorMessage } from '../services/apiClient'
 import { formatClp, formatRate } from '../utils/format'
 import { monthLabel, monthValue } from '../utils/date'
@@ -35,15 +38,15 @@ export function MonthWorkspacePage() {
   const loadWorkspace = useCallback(async () => {
     if (isAdmin && !professionalId) return null
     const [nextWorkspace, nextRelations] = await Promise.all([
-      incomeService.workspace(year, month, isAdmin ? professionalId : undefined),
-      incomeService.professionalInstitutions(isAdmin ? professionalId : undefined),
+      periodService.workspace(year, month, isAdmin ? professionalId : undefined),
+      professionalInstitutionService.list(isAdmin ? professionalId : undefined),
     ])
     return { workspace: nextWorkspace, relationships: nextRelations }
   }, [isAdmin, professionalId, year, month])
 
   useEffect(() => {
     if (!isAdmin) return
-    incomeService.professionals().then(setProfessionals).catch(requestError => setError(getApiErrorMessage(requestError)))
+    professionalService.list().then(setProfessionals).catch(requestError => setError(getApiErrorMessage(requestError)))
   }, [isAdmin])
 
   useEffect(() => {
@@ -69,7 +72,7 @@ export function MonthWorkspacePage() {
     setBusy(true)
     setAddInstitutionError(null)
     try {
-      const result = await incomeService.addInstitutionToPeriod(year, month, institutionToAdd)
+      const result = await periodService.addInstitution(year, month, institutionToAdd)
       setWorkspace(result)
       setAddInstitutionModalOpen(false)
       setInstitutionToAdd(undefined)
@@ -84,7 +87,7 @@ export function MonthWorkspacePage() {
   const removePeriodInstitution = async (institutionId: string) => {
     setBusy(true)
     try {
-      setWorkspace(await incomeService.removeInstitutionFromPeriod(year, month, institutionId))
+      setWorkspace(await periodService.removeInstitution(year, month, institutionId))
       markSaved()
     } catch (requestError) {
       setError(getApiErrorMessage(requestError))
@@ -110,7 +113,7 @@ export function MonthWorkspacePage() {
     if (!workspace || institution.nextBeforeOrder === null || loadingOlderInstitutionId) return
     setLoadingOlderInstitutionId(institution.professionalInstitutionId)
     try {
-      const page = await incomeService.olderHours(
+      const page = await hourRecordService.older(
         year,
         month,
         institution.professionalInstitutionId,
@@ -308,8 +311,8 @@ export function MonthWorkspacePage() {
                       key={record.id}
                       record={record}
                       canEdit={canEdit}
-                      onCreate={hours => incomeService.addHours(year, month, institution.professionalInstitutionId, hours)}
-                      onUpdate={(id, hours, version) => incomeService.updateHours(id, hours, version)}
+                      onCreate={hours => hourRecordService.create(year, month, institution.professionalInstitutionId, hours)}
+                      onUpdate={(id, hours, version) => hourRecordService.update(id, hours, version)}
                       onDelete={record => deleteRecord(institution.professionalInstitutionId, record)}
                       onReload={reloadCurrentWorkspace}
                       onCommitted={result => commitHour(institution.professionalInstitutionId, result)}
@@ -319,8 +322,8 @@ export function MonthWorkspacePage() {
                       key={`draft-${draft.key}`}
                       draftKey={draft.key}
                       canEdit={canEdit}
-                      onCreate={hours => incomeService.addHours(year, month, institution.professionalInstitutionId, hours)}
-                      onUpdate={(id, hours, version) => incomeService.updateHours(id, hours, version)}
+                      onCreate={hours => hourRecordService.create(year, month, institution.professionalInstitutionId, hours)}
+                      onUpdate={(id, hours, version) => hourRecordService.update(id, hours, version)}
                       onDelete={record => deleteRecord(institution.professionalInstitutionId, record)}
                       onReload={reloadCurrentWorkspace}
                       onCommitted={result => commitHour(institution.professionalInstitutionId, result)}
@@ -360,7 +363,7 @@ export function MonthWorkspacePage() {
   )
 
   async function deleteRecord(relationId: string, record: HourRecord): Promise<MonthlyWorkspace> {
-    const updated = await incomeService.deleteHours(record.id, record.version)
+    const updated = await hourRecordService.delete(record.id, record.version)
     setWorkspace(current => mergeWorkspace(current, updated, undefined, undefined, relationId, record.id))
     markSaved()
     return updated
