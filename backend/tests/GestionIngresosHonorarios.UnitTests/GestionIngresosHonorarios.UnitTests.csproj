@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\GestionIngresosHonorarios.Application\GestionIngresosHonorarios.Application.csproj" />
+    <ProjectReference Include="..\..\src\GestionIngresosHonorarios.Api\GestionIngresosHonorarios.Api.csproj" />
     <ProjectReference Include="..\..\src\GestionIngresosHonorarios.Domain\GestionIngresosHonorarios.Domain.csproj" />
     <ProjectReference Include="..\..\src\GestionIngresosHonorarios.Infrastructure\GestionIngresosHonorarios.Infrastructure.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

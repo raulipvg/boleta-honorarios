@@ -10,7 +10,11 @@ namespace GestionIngresosHonorarios.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public sealed class AuthController(IAuthApplicationService auth, IAntiforgery antiforgery, IConfiguration configuration) : ControllerBase
+public sealed class AuthController(
+    IAuthApplicationService auth,
+    IAntiforgery antiforgery,
+    IConfiguration configuration,
+    ILogger<AuthController> logger) : ControllerBase
 {
     [HttpGet("csrf")]
     [AllowAnonymous]
@@ -60,8 +64,17 @@ public sealed class AuthController(IAuthApplicationService auth, IAntiforgery an
         ValidateBrowserOrigin();
         await antiforgery.ValidateRequestAsync(HttpContext);
         NoStore();
-        await auth.LogoutAsync(Request.Cookies[RefreshCookieName], cancellationToken);
+        var refreshToken = Request.Cookies[RefreshCookieName];
         ClearRefreshCookie();
+        try
+        {
+            await auth.LogoutAsync(refreshToken, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "No se pudo revocar la sesión durante el cierre de sesión.");
+            return StatusCode(StatusCodes.Status500InternalServerError);
+        }
         return NoContent();
     }
 

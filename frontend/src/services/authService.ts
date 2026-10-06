@@ -24,9 +24,12 @@ export const authService = {
   },
 
   async logout(): Promise<void> {
-    const csrfToken = await getCsrfToken()
-    await apiClient.post('/auth/logout', {}, { headers: { 'X-CSRF-TOKEN': csrfToken }, _skipAuthRefresh: true })
-    setAccessToken(null)
+    try {
+      const csrfToken = await getCsrfToken()
+      await apiClient.post('/auth/logout', {}, { headers: { 'X-CSRF-TOKEN': csrfToken }, _skipAuthRefresh: true })
+    } finally {
+      setAccessToken(null)
+    }
   },
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
