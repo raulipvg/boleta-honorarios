@@ -107,13 +107,13 @@ a { color: inherit; }
 .institution-title-wrap h3.ant-typography { margin: 0 0 3px; overflow: hidden; text-overflow: ellipsis; font-size: 18px; white-space: nowrap; }
 .institution-title-wrap .ant-typography-secondary { font-size: 11px; }
 .hour-entry-list { display: flex; flex-direction: column; gap: 5px; min-height: 18px; margin: 20px 0 11px; }
-.hour-editor-row { display: flex; align-items: center; min-height: 42px; gap: 9px; }
-.hour-editor-wrap { display: flex; align-items: center; gap: 4px; width: 100%; max-width: 184px; }
-.hour-editor-wrap .ant-input-affix-wrapper { border-radius: 9px; background: #f7f9f8; }
+.hour-editor-row { display: flex; align-items: center; min-height: 42px; gap: 9px; width: 100%; }
+.hour-editor-wrap { display: flex; flex: 1 1 0; align-items: center; gap: 4px; min-width: 0; }
+.hour-editor-wrap .ant-input-affix-wrapper { flex: 1 1 auto; min-width: 0; border-radius: 9px; background: #f7f9f8; }
 .hour-editor-wrap input { font-variant-numeric: tabular-nums; font-weight: 650; }
 .hour-editor-draft .ant-input-affix-wrapper { border-color: #7bbdb0; background: #f5fbf9; }
 .hour-unit { color: #819095; font-size: 11px; }
-.hour-editor-feedback { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.hour-editor-feedback { display: flex; flex: 0 1 auto; align-items: center; gap: 3px; min-width: 0; }
 .save-state { font-size: 10px; }
 .state-saving, .state-pending { color: #b27b31 !important; }
 .state-saved { color: #33896c !important; }
@@ -128,13 +128,14 @@ a { color: inherit; }
 .institution-totals .net-line strong { color: #167d78; font-size: 14px; }
 .add-institution-card { display: flex; align-items: center; min-height: 77px; }
 .add-institution-card .ant-card-body { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; width: 100%; }
-.add-institution-card .section-card-heading, .institution-quick-create-row, .institution-quick-create-form { flex-basis: 100%; }
-.institution-quick-create-row, .institution-quick-create-form { width: 100%; }
+.institution-setup-header { width: 100%; }
+.institution-setup-header .section-card-heading { flex: 1 1 260px; min-width: 0; margin-bottom: 0; }
+.institution-setup-header .institution-quick-create-row { flex: 0 1 auto; width: auto; }
+.institution-quick-create-form { flex-basis: 100%; width: 100%; }
 .institution-quick-create-form { margin-top: -3px; }
-.add-institution-card > .ant-card-body > .ant-typography-secondary { flex-basis: 100%; padding-left: 2px; font-size: 11px; }
+.add-institution-card > .ant-card-body > .institution-catalog-empty { align-self: flex-end; flex-basis: 100%; padding-left: 2px; font-size: 11px; text-align: right; }
 .empty-period { padding: 16px; }
 
-.relation-list { display: flex; flex-direction: column; gap: 16px; }
 .relation-card { padding: 3px; }
 .relation-card .ant-card-body { padding: 23px; }
 .relation-card-header .institution-title-wrap > div { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
@@ -144,9 +145,12 @@ a { color: inherit; }
 .rate-version span { color: #819096; font-size: 11px; }
 .rate-version strong { color: #284957; font: 700 15px Manrope, sans-serif; }
 .rate-version small { margin-left: 3px; color: #87959a; font: 500 10px 'DM Sans', sans-serif; }
-.rate-create-form { margin-top: 19px; padding-top: 17px; border-top: 1px dashed #e4ebe8; }
+.rate-create-form { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: 8px; margin-top: 19px; padding-top: 17px; border-top: 1px dashed #e4ebe8; }
+.rate-create-form .ant-form-item { margin-inline-end: 0; margin-bottom: 0; }
 .rate-create-form .ant-form-item-label { font-size: 11px; }
-.rate-create-form .ant-input-number { min-width: 170px; }
+.rate-create-form .ant-input-number { min-width: 0; }
+.rate-create-form .rate-year-input { width: 72px; }
+.rate-create-form .rate-hourly-input { width: 118px; }
 .rate-create-form .ant-input-number-group-addon { color: #718087; }
 
 .account-create-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
@@ -223,6 +227,8 @@ a { color: inherit; }
   .account-create-grid .account-create-submit { padding-bottom: 16px; }
   .password-form .ant-form-item:nth-child(3) { grid-column: auto; }
   .section-card-heading { align-items: flex-start; flex-direction: column; }
+  .institution-setup-header { align-items: flex-start; }
+  .rate-create-form { flex-wrap: wrap; }
   .auth-page { grid-template-columns: 1fr; }
   .auth-visual { display: none; }
   .auth-form-side { min-height: 100vh; padding: 24px; }

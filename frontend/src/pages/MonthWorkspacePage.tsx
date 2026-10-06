@@ -478,7 +478,7 @@ function HourEditor({
     }
   }
 
-  const statusLabel = state === 'saving' ? 'Guardando…' : state === 'saved' ? 'Guardado' : state === 'conflict' ? 'Conflicto' : state === 'error' ? 'Error al guardar' : null
+  const statusLabel = state === 'saved' ? 'Guardado' : state === 'conflict' ? 'Conflicto' : state === 'error' ? 'Error al guardar' : null
 
   return <div className={`hour-editor-row ${isDraft ? 'hour-editor-draft' : ''}`}>
     <div className="hour-editor-wrap">
@@ -486,6 +486,7 @@ function HourEditor({
         ref={inputRef}
         data-hour-editor="true"
         aria-label="Horas trabajadas"
+        styles={{ input: { textAlign: 'right' } }}
         inputMode="numeric"
         value={value}
         disabled={!canEdit || deleting}
@@ -508,8 +509,8 @@ function HourEditor({
           setDeleting(true)
           try { await onDelete(record) } catch (deleteError) { setError(getApiErrorMessage(deleteError)); setState('error') } finally { setDeleting(false) }
         }}
-      ><Button type="text" danger size="large" icon={<CloseOutlined />} disabled={deleting || state === 'pending' || state === 'saving'} aria-label="Eliminar registro" /></Popconfirm>}
-      {!record && canEdit && onCancel && <Button type="text" size="small" onClick={onCancel} aria-label="Cancelar fila">×</Button>}
+      ><Button type="text" danger size="large" icon={<CloseOutlined />} loading={state === 'saving'} disabled={deleting || state === 'pending'} aria-label={state === 'saving' ? 'Guardando registro' : 'Eliminar registro'} /></Popconfirm>}
+      {!record && canEdit && onCancel && <Button type="text" size="large" icon={<CloseOutlined />} loading={state === 'saving'} onClick={onCancel} aria-label={state === 'saving' ? 'Guardando registro' : 'Cancelar fila'} />}
     </div>
     <div className="hour-editor-feedback" aria-live="polite">
       {statusLabel && <Typography.Text className={`save-state state-${state}`}>{statusLabel}</Typography.Text>}

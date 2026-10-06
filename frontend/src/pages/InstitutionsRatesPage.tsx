@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Empty, Form, Input, InputNumber, Select, Skeleton, Space, Tag, Typography, message } from 'antd'
+import { CheckOutlined, CloseOutlined, DisconnectOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Col, Empty, Flex, Form, Input, InputNumber, Row, Select, Skeleton, Space, Tag, Tooltip, Typography, message } from 'antd'
 import { incomeService } from '../services/incomeService'
 import { getApiErrorMessage } from '../services/apiClient'
 import { useAuth } from '../hooks/useAuth'
@@ -128,59 +129,72 @@ export function InstitutionsRatesPage() {
     {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} />}
 
     {canCreateRelation && <Card className="add-institution-card" bordered={false}>
-      <div className="section-card-heading"><div><Typography.Text className="eyebrow">TU RED DE TRABAJO</Typography.Text><Typography.Title level={3}>Agregar una institución</Typography.Title></div></div>
-      <Space wrap className="institution-quick-create-row">
-        <Select showSearch optionFilterProp="label" placeholder="Selecciona una institución pública"
-          value={institutionId} onChange={setInstitutionId} style={{ width: 320, maxWidth: '100%', minWidth: 0 }}
-          options={availableCatalog.map(item => ({ value: item.id, label: item.name }))} />
-        <Button type="primary" disabled={!institutionId} loading={busy} onClick={() => void addRelation()}>Asociar a mi perfil</Button>
-        <Button disabled={busy} onClick={() => { setQuickCreateOpen(open => !open); setNewInstitutionName('') }}>
-          {quickCreateOpen ? 'Cancelar nueva' : 'Crear nueva institución'}
-        </Button>
-      </Space>
-      {quickCreateOpen && <Space wrap className="institution-quick-create-form">
+      <Flex justify="space-between" align="center" gap={16} wrap className="institution-setup-header">
+        <div className="section-card-heading"><div><Typography.Text className="eyebrow">TU RED DE TRABAJO</Typography.Text><Typography.Title level={3}>Agregar una institución</Typography.Title></div></div>
+        <Space wrap className="institution-quick-create-row">
+          <Select showSearch optionFilterProp="label" placeholder="Selecciona una institución pública"
+            value={institutionId} onChange={setInstitutionId} style={{ width: 320, maxWidth: '100%', minWidth: 0 }}
+            options={availableCatalog.map(item => ({ value: item.id, label: item.name }))} />
+          <Tooltip title="Asociar a mi perfil">
+            <Button type="primary" icon={<LinkOutlined />} aria-label="Asociar a mi perfil" disabled={!institutionId} loading={busy} onClick={() => void addRelation()} />
+          </Tooltip>
+          <Tooltip title={quickCreateOpen ? 'Cancelar nueva institución' : 'Crear nueva institución'}>
+            <Button
+              icon={quickCreateOpen ? <CloseOutlined /> : <PlusOutlined />}
+              aria-label={quickCreateOpen ? 'Cancelar nueva institución' : 'Crear nueva institución'}
+              danger={quickCreateOpen}
+              disabled={busy}
+              onClick={() => { setQuickCreateOpen(open => !open); setNewInstitutionName('') }}
+            />
+          </Tooltip>
+        </Space>
+      </Flex>
+      {quickCreateOpen && <Flex justify="flex-end" align="center" gap={8} wrap className="institution-quick-create-form">
         <Input autoFocus aria-label="Nombre de la institución" disabled={busy} maxLength={200} value={newInstitutionName} placeholder="Nombre de la institución"
           onChange={event => setNewInstitutionName(event.target.value)}
           onPressEnter={() => void quickCreateInstitution()} style={{ width: 320, maxWidth: '100%' }} />
-        <Button type="primary" disabled={!newInstitutionName.trim()} loading={busy} onClick={() => void quickCreateInstitution()}>
-          Crear y asociar
-        </Button>
-      </Space>}
-      {availableCatalog.length === 0 && <Typography.Text type="secondary">No hay otras instituciones activas disponibles en el catálogo.</Typography.Text>}
+        <Tooltip title="Crear y asociar">
+          <Button type="primary" icon={<CheckOutlined />} aria-label="Crear y asociar" disabled={!newInstitutionName.trim()} loading={busy} onClick={() => void quickCreateInstitution()} />
+        </Tooltip>
+      </Flex>}
     </Card>}
 
     {loading ? <Skeleton active paragraph={{ rows: 5 }} /> : isAdmin && !professionalId ? (
       <Card className="empty-workspace" bordered={false}><Empty description="Selecciona un profesional para consultar sus relaciones y tarifas." /></Card>
     ) : relations.length === 0 ? (
       <Card className="empty-workspace" bordered={false}><Empty description="Todavía no hay instituciones asociadas." /></Card>
-    ) : <div className="relation-list">
-      {relations.map((relation, index) => <Card key={relation.id} className="relation-card" bordered={false}>
-        <div className="relation-card-header">
-          <div className="institution-title-wrap"><span className={`institution-index index-${index % 4}`}>{String(index + 1).padStart(2, '0')}</span>
-            <div><Typography.Title level={3}>{relation.institutionName}</Typography.Title><Tag color={relation.active ? 'green' : 'default'}>{relation.active ? 'Activa' : 'Inactiva'}</Tag></div>
+    ) : <Row gutter={[16, 16]}>
+      {relations.map((relation, index) => <Col key={relation.id} xs={24} md={12}>
+        <Card className="relation-card" bordered={false}>
+          <div className="relation-card-header">
+            <div className="institution-title-wrap"><span className={`institution-index index-${index % 4}`}>{String(index + 1).padStart(2, '0')}</span>
+              <div><Typography.Title level={3}>{relation.institutionName}</Typography.Title><Tag color={relation.active ? 'green' : 'default'}>{relation.active ? 'Activa' : 'Inactiva'}</Tag></div>
+            </div>
+            {canCreateRelation && relation.active && <Tooltip title="Desactivar relación">
+              <Button type="text" danger icon={<DisconnectOutlined />} aria-label="Desactivar relación" disabled={busy} onClick={() => void deactivate(relation.id)} />
+            </Tooltip>}
           </div>
-          {canCreateRelation && relation.active && <Button type="text" danger disabled={busy} onClick={() => void deactivate(relation.id)}>Desactivar relación</Button>}
-        </div>
 
-        <div className="rate-history">
-          <Typography.Text className="eyebrow">HISTORIAL DE VALOR HORA</Typography.Text>
-          {relation.rates.length === 0 ? <Typography.Text type="secondary">Aún no se han definido tarifas.</Typography.Text> : <div className="rate-version-grid">
-            {relation.rates.map(rate => <div className="rate-version" key={`${rate.year}-${rate.version}`}>
-              <span>{rate.year} · v{rate.version}</span><strong>{formatClp(rate.hourlyRateClp)}<small>/h</small></strong>
-            </div>)}
-          </div>}
-        </div>
+          <div className="rate-history">
+            <Typography.Text className="eyebrow">HISTORIAL DE VALOR HORA</Typography.Text>
+            {relation.rates.length === 0 ? <Typography.Text type="secondary">Aún no se han definido tarifas.</Typography.Text> : <div className="rate-version-grid">
+              {relation.rates.map(rate => <div className="rate-version" key={`${rate.year}-${rate.version}`}>
+                <span>{rate.year} · v{rate.version}</span><strong>{formatClp(rate.hourlyRateClp)}<small>/h</small></strong>
+              </div>)}
+            </div>}
+          </div>
 
-        {canCreateRate && relation.active && <Form layout="inline" className="rate-create-form" onFinish={values => addRate(relation.id, values)}>
-          <Form.Item name="year" label="Año" rules={[{ required: true, message: 'Ingresa el año de la tarifa.' }]}>
-            <InputNumber min={1900} max={32767} precision={0} placeholder="Año" />
-          </Form.Item>
-          <Form.Item name="hourlyRateClp" label="Tarifa bruta por hora" rules={[{ required: true, message: 'Ingresa el valor hora.' }]}>
-            <InputNumber min={0} max={9_007_199_254_740_991} precision={0} step={100} addonAfter="CLP" placeholder="0" />
-          </Form.Item>
-          <Form.Item><Button type="primary" htmlType="submit" loading={busy}>Publicar nueva versión</Button></Form.Item>
-        </Form>}
-      </Card>)}
-    </div>}
+          {canCreateRate && relation.active && <Form layout="inline" className="rate-create-form" onFinish={values => addRate(relation.id, values)}>
+            <Form.Item name="year" label="Año" rules={[{ required: true, message: 'Ingresa el año de la tarifa.' }]}>
+              <InputNumber className="rate-year-input" min={1900} max={32767} precision={0} placeholder="Año" />
+            </Form.Item>
+            <Form.Item name="hourlyRateClp" label="Tarifa bruta por hora" rules={[{ required: true, message: 'Ingresa el valor hora.' }]}>
+              <InputNumber className="rate-hourly-input" min={0} max={9_007_199_254_740_991} precision={0} step={100} addonAfter="CLP" placeholder="0" />
+            </Form.Item>
+            <Form.Item><Button type="primary" htmlType="submit" loading={busy}>Publicar nueva versión</Button></Form.Item>
+          </Form>}
+        </Card>
+      </Col>)}
+    </Row>}
   </div>
 }
