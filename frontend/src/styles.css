@@ -64,8 +64,6 @@ a { color: inherit; }
 .dashboard-amount-cell span { color: #859398; font-size: 11px; }
 .no-data-cell { color: #afb8b9; }
 .table-total { color: #167d78 !important; }
-.row-no-period { background: #fafbfb; }
-.row-no-period .ant-table-cell { color: #909b9d; }
 .chart-card { overflow: hidden; }
 .chart-scroll { overflow-x: auto; margin: 8px -8px 0; }
 .income-chart { display: block; width: 100%; min-width: 720px; height: 300px; overflow: visible; }

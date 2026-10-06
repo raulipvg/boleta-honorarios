@@ -48,11 +48,24 @@ export function DashboardPage() {
     return () => { active = false }
   }, [fromYear, toYear, professionalId, institutionIds, isAdmin])
 
+  const visibleMonths = useMemo(() => data?.months.filter(month => month.periodExists) ?? [], [data?.months])
+  const visibleMonthsPerYear = useMemo(() => {
+    const counts = new Map<number, number>()
+    for (const month of visibleMonths)
+      counts.set(month.year, (counts.get(month.year) ?? 0) + 1)
+    return counts
+  }, [visibleMonths])
+  const chartData = useMemo(() => data ? { ...data, months: visibleMonths } : null, [data, visibleMonths])
+
   const columns = useMemo<TableColumnsType<DashboardMonth>>(() => {
     const base: TableColumnsType<DashboardMonth> = [
       {
         title: 'Año', dataIndex: 'year', key: 'year', width: 86, fixed: 'left',
-        onCell: (row, index) => ({ rowSpan: index === undefined || data?.months[index - 1]?.year !== row.year ? 12 : 0 }),
+        onCell: (row, index) => ({
+          rowSpan: index === undefined || visibleMonths[index - 1]?.year !== row.year
+            ? visibleMonthsPerYear.get(row.year) ?? 1
+            : 0,
+        }),
         render: value => <Typography.Text strong>{value}</Typography.Text>,
       },
       { title: 'Mes', dataIndex: 'month', key: 'month', width: 132, fixed: 'left', render: value => monthName(value) },
@@ -76,7 +89,7 @@ export function DashboardPage() {
         ? <span className="no-data-cell">Sin período</span>
         : <Typography.Text strong className="table-total">{formatClp(row.totalNetClp)}</Typography.Text>,
     }]
-  }, [data?.institutions, data?.months])
+  }, [data?.institutions, visibleMonths, visibleMonthsPerYear])
 
   const yearOptions = Array.from({ length: 50 }, (_, index) => currentYear + 1 - index)
 
@@ -129,23 +142,22 @@ export function DashboardPage() {
           <div><Typography.Text className="eyebrow">DETALLE MENSUAL</Typography.Text><Typography.Title level={3}>Líquido por institución</Typography.Title></div>
           <Tag variant="filled">{data.institutions.length} instituciones</Tag>
         </div>
-        {data.institutions.length === 0 ? <Empty description="No hay instituciones asociadas a este profesional." /> : <Table<DashboardMonth>
+        {data.institutions.length === 0 ? <Empty description="No hay instituciones asociadas a este profesional." /> : visibleMonths.length === 0 ? <Empty description="No hay períodos registrados en este rango." /> : <Table<DashboardMonth>
           rowKey={row => `${row.year}-${row.month}`}
           columns={columns}
-          dataSource={data.months}
+          dataSource={visibleMonths}
           pagination={false}
           scroll={{ x: 'max-content' }}
           size="middle"
-          rowClassName={row => row.periodExists ? '' : 'row-no-period'}
         />}
       </Card>
 
       <Card className="chart-card" variant="borderless">
         <div className="section-card-heading">
           <div><Typography.Text className="eyebrow">TENDENCIA EN EL TIEMPO</Typography.Text><Typography.Title level={3}>Evolución del líquido mensual</Typography.Title></div>
-          <Typography.Text type="secondary">Los meses sin período aparecen como espacios en la línea.</Typography.Text>
+          <Typography.Text type="secondary">Se muestran únicamente los meses con períodos registrados.</Typography.Text>
         </div>
-        <IncomeLineChart data={data} />
+        <IncomeLineChart data={chartData ?? data} />
       </Card>
     </> : null}
   </div>
