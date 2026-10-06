@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { CloseOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Col, DatePicker, Empty, Input, Popconfirm, Row, Select, Skeleton, Space, Tag, Typography, type InputRef } from 'antd'
+import { CloseOutlined, PlusOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Col, DatePicker, Empty, Input, Modal, Popconfirm, Row, Select, Skeleton, Space, Tag, Typography, type InputRef } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { incomeService } from '../services/incomeService'
 import { getApiErrorMessage } from '../services/apiClient'
@@ -22,8 +22,9 @@ export function MonthWorkspacePage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [addDraft, setAddDraft] = useState(false)
+  const [addInstitutionModalOpen, setAddInstitutionModalOpen] = useState(false)
   const [institutionToAdd, setInstitutionToAdd] = useState<string>()
+  const [addInstitutionError, setAddInstitutionError] = useState<string | null>(null)
   const [draftRows, setDraftRows] = useState<{ institutionId: string; key: number }[]>([])
   const [loadingOlderInstitutionId, setLoadingOlderInstitutionId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -66,15 +67,15 @@ export function MonthWorkspacePage() {
   const persistPeriodInstitution = async () => {
     if (!institutionToAdd) return
     setBusy(true)
-    setError(null)
+    setAddInstitutionError(null)
     try {
       const result = await incomeService.addInstitutionToPeriod(year, month, institutionToAdd)
       setWorkspace(result)
-      setAddDraft(false)
+      setAddInstitutionModalOpen(false)
       setInstitutionToAdd(undefined)
       markSaved()
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError))
+      setAddInstitutionError(getApiErrorMessage(requestError))
     } finally {
       setBusy(false)
     }
@@ -161,24 +162,36 @@ export function MonthWorkspacePage() {
           <Typography.Title level={1}>Tus horas, en contexto.</Typography.Title>
           <Typography.Paragraph>Registra cada bloque con libertad. Los totales se actualizan al guardar.</Typography.Paragraph>
         </div>
-        <div className="month-switcher">
-          <Button aria-label="Mes anterior" onClick={() => setCurrentMonth(-1)}>‹</Button>
-          <DatePicker
-            picker="month"
-            allowClear={false}
-            value={selectedMonth}
-            onChange={value => {
-              if (!value) return
-              setLoading(true)
-              setError(null)
-              setDraftRows([])
-              setSelectedMonth(value.date(1))
+        <Space className="month-heading-controls" size={12} wrap>
+          <div className="month-switcher">
+            <Button aria-label="Mes anterior" onClick={() => setCurrentMonth(-1)}>‹</Button>
+            <DatePicker
+              picker="month"
+              allowClear={false}
+              value={selectedMonth}
+              onChange={value => {
+                if (!value) return
+                setLoading(true)
+                setError(null)
+                setDraftRows([])
+                setSelectedMonth(value.date(1))
+              }}
+              format="MMMM YYYY"
+              inputReadOnly
+            />
+            <Button aria-label="Mes siguiente" onClick={() => setCurrentMonth(1)}>›</Button>
+          </div>
+          {canEdit && !loading && workspace && <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={busy}
+            onClick={() => {
+              setAddInstitutionError(null)
+              setInstitutionToAdd(undefined)
+              setAddInstitutionModalOpen(true)
             }}
-            format="MMMM YYYY"
-            inputReadOnly
-          />
-          <Button aria-label="Mes siguiente" onClick={() => setCurrentMonth(1)}>›</Button>
-        </div>
+          >Agregar institución</Button>}
+        </Space>
       </section>
 
       {isAdmin && <Card className="filter-card" bordered={false}>
@@ -222,27 +235,48 @@ export function MonthWorkspacePage() {
 
           {isAdmin && <Alert className="readonly-alert" type="info" showIcon message="Vista de administrador" description="Puedes consultar períodos, horas y montos. Las modificaciones de horas corresponden exclusivamente al profesional." />}
 
-          {canEdit && <Card className="add-institution-card" bordered={false}>
-            {!addDraft ? <Button type="dashed" onClick={() => setAddDraft(true)} disabled={availableRelationships.length === 0}>
-              ＋ Agregar institución a este mes
-            </Button> : <Space wrap>
-              <Select
-                showSearch
-                optionFilterProp="label"
-                placeholder="Institución con tarifa configurada para este año"
-                value={institutionToAdd}
-                onChange={setInstitutionToAdd}
-                style={{ minWidth: 300 }}
-                options={availableRelationships.map(relation => {
-                  const rate = relation.rates.find(item => item.year === year)
-                  return { value: relation.id, label: rate ? `${relation.institutionName} · ${formatClp(rate.hourlyRateClp)}/h` : `${relation.institutionName} · tarifa pendiente`, disabled: !rate }
-                })}
+          {canEdit && <Modal
+            title="Agregar institución a este mes"
+            open={addInstitutionModalOpen}
+            onCancel={() => {
+              if (busy) return
+              setAddInstitutionModalOpen(false)
+              setInstitutionToAdd(undefined)
+              setAddInstitutionError(null)
+            }}
+            onOk={() => void persistPeriodInstitution()}
+            okText="Añadir al mes"
+            cancelText="Cancelar"
+            confirmLoading={busy}
+            okButtonProps={{ disabled: !institutionToAdd || busy }}
+            closable={!busy}
+            maskClosable={!busy}
+            keyboard={!busy}
+          >
+            {addInstitutionError && <Alert className="form-alert" type="error" showIcon message={addInstitutionError} />}
+            {availableRelationships.length === 0
+              ? <Alert
+                type="info"
+                showIcon
+                message="No hay instituciones disponibles para este mes."
+                description="Vincula una institución y configura su tarifa anual para poder agregarla."
               />
-              <Button type="primary" loading={busy} disabled={!institutionToAdd} onClick={() => void persistPeriodInstitution()}>Añadir al mes</Button>
-              <Button onClick={() => { setAddDraft(false); setInstitutionToAdd(undefined) }}>Cancelar</Button>
-            </Space>}
-            {availableRelationships.length === 0 && <Typography.Text type="secondary">Configura una institución y su tarifa anual para poder agregarla a este mes.</Typography.Text>}
-          </Card>}
+              : <>
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Selecciona una institución con tarifa configurada"
+                  value={institutionToAdd}
+                  onChange={value => { setInstitutionToAdd(value); setAddInstitutionError(null) }}
+                  style={{ width: '100%' }}
+                  options={availableRelationships.map(relation => {
+                    const rate = relation.rates.find(item => item.year === year)
+                    return { value: relation.id, label: rate ? `${relation.institutionName} · ${formatClp(rate.hourlyRateClp)}/h` : `${relation.institutionName} · tarifa pendiente`, disabled: !rate }
+                  })}
+                />
+                <Typography.Text type="secondary">La tarifa debe estar configurada para {year}.</Typography.Text>
+              </>}
+          </Modal>}
 
           {workspace.institutions.length === 0 && <Card className="empty-period" bordered={false}>
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={workspace.exists ? 'Todavía no agregas instituciones a este mes.' : 'Este período aún no tiene actividad.'} />

@@ -158,8 +158,6 @@ a { color: inherit; }
 .create-account-card .ant-alert { margin-top: 5px; }
 .settings-card { padding: 2px; }
 .settings-card .ant-form-item { max-width: 520px; }
-.password-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
-.password-form .ant-form-item:nth-child(3) { grid-column: 1 / -1; max-width: 520px; }
 .dashboard-table-card .ant-table-pagination { margin-bottom: 0; }
 
 .page-loading { display: grid; min-height: 100vh; place-items: center; }
@@ -223,9 +221,8 @@ a { color: inherit; }
   .dashboard-filters { align-items: stretch; flex-direction: column; }
   .dashboard-filters label, .dashboard-filters .institution-filter { width: 100%; min-width: 0; }
   .dashboard-filters .ant-select { width: 100%; }
-  .account-create-grid, .password-form { grid-template-columns: 1fr; }
+  .account-create-grid { grid-template-columns: 1fr; }
   .account-create-grid .account-create-submit { padding-bottom: 16px; }
-  .password-form .ant-form-item:nth-child(3) { grid-column: auto; }
   .section-card-heading { align-items: flex-start; flex-direction: column; }
   .institution-setup-header { align-items: flex-start; }
   .rate-create-form { flex-wrap: wrap; }
