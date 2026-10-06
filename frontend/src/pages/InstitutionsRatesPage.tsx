@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckOutlined, CloseOutlined, DisconnectOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Col, Empty, Flex, Form, Input, InputNumber, Row, Select, Skeleton, Space, Tag, Tooltip, Typography, message } from 'antd'
+import { Alert, App as AntdApp, Button, Card, Col, Empty, Flex, Form, Input, InputNumber, Row, Select, Skeleton, Space, Tag, Tooltip, Typography } from 'antd'
+import type { InputNumberProps } from 'antd'
 import { incomeService } from '../services/incomeService'
 import { getApiErrorMessage } from '../services/apiClient'
 import { useAuth } from '../hooks/useAuth'
@@ -8,7 +9,15 @@ import { PermissionCodes, RoleCodes } from '../constants/authorization'
 import { formatClp } from '../utils/format'
 import type { Institution, ProfessionalInstitution, ProfessionalSummary } from '../types/api'
 
+function HourlyRateInput(props: InputNumberProps) {
+  return <Space.Compact className="rate-hourly-input-compact">
+    <InputNumber {...props} className="rate-hourly-input" />
+    <Space.Addon>CLP</Space.Addon>
+  </Space.Compact>
+}
+
 export function InstitutionsRatesPage() {
+  const { message } = AntdApp.useApp()
   const auth = useAuth()
   const isAdmin = auth.hasRole(RoleCodes.administrator)
   const canCreateRelation = auth.hasPermission(PermissionCodes.relationshipsManage)
@@ -118,17 +127,17 @@ export function InstitutionsRatesPage() {
       <Tag color="cyan">Tarifas privadas por profesional</Tag>
     </section>
 
-    {isAdmin && <Card className="filter-card" bordered={false}>
+    {isAdmin && <Card className="filter-card" variant="borderless">
       <Space wrap><Typography.Text strong>Profesional</Typography.Text><Select
         showSearch optionFilterProp="label" placeholder="Selecciona un profesional para consultar"
         value={professionalId} onChange={value => { setLoading(Boolean(value)); setProfessionalId(value) }}
         options={professionals.map(person => ({ value: person.id, label: person.name }))} style={{ minWidth: 320 }}
       /><Tag color="gold">Consulta de solo lectura para tarifas</Tag></Space>
     </Card>}
-    {isAdmin && <Alert type="info" showIcon message="Las cuentas con rol Administrador pueden consultar tarifas, pero nunca crear ni versionarlas." />}
-    {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} />}
+    {isAdmin && <Alert type="info" showIcon title="Las cuentas con rol Administrador pueden consultar tarifas, pero nunca crear ni versionarlas." />}
+    {error && <Alert type="error" showIcon title={error} closable={{ onClose: () => setError(null) }} />}
 
-    {canCreateRelation && <Card className="add-institution-card" bordered={false}>
+    {canCreateRelation && <Card className="add-institution-card" variant="borderless">
       <Flex justify="space-between" align="center" gap={16} wrap className="institution-setup-header">
         <div className="section-card-heading"><div><Typography.Text className="eyebrow">TU RED DE TRABAJO</Typography.Text><Typography.Title level={3}>Agregar una institución</Typography.Title></div></div>
         <Space wrap className="institution-quick-create-row">
@@ -160,12 +169,12 @@ export function InstitutionsRatesPage() {
     </Card>}
 
     {loading ? <Skeleton active paragraph={{ rows: 5 }} /> : isAdmin && !professionalId ? (
-      <Card className="empty-workspace" bordered={false}><Empty description="Selecciona un profesional para consultar sus relaciones y tarifas." /></Card>
+      <Card className="empty-workspace" variant="borderless"><Empty description="Selecciona un profesional para consultar sus relaciones y tarifas." /></Card>
     ) : relations.length === 0 ? (
-      <Card className="empty-workspace" bordered={false}><Empty description="Todavía no hay instituciones asociadas." /></Card>
+      <Card className="empty-workspace" variant="borderless"><Empty description="Todavía no hay instituciones asociadas." /></Card>
     ) : <Row gutter={[16, 16]}>
       {relations.map((relation, index) => <Col key={relation.id} xs={24} md={12}>
-        <Card className="relation-card" bordered={false}>
+        <Card className="relation-card" variant="borderless">
           <div className="relation-card-header">
             <div className="institution-title-wrap"><span className={`institution-index index-${index % 4}`}>{String(index + 1).padStart(2, '0')}</span>
               <div><Typography.Title level={3}>{relation.institutionName}</Typography.Title><Tag color={relation.active ? 'green' : 'default'}>{relation.active ? 'Activa' : 'Inactiva'}</Tag></div>
@@ -189,7 +198,7 @@ export function InstitutionsRatesPage() {
               <InputNumber className="rate-year-input" min={1900} max={32767} precision={0} placeholder="Año" />
             </Form.Item>
             <Form.Item name="hourlyRateClp" label="Tarifa bruta por hora" rules={[{ required: true, message: 'Ingresa el valor hora.' }]}>
-              <InputNumber className="rate-hourly-input" min={0} max={9_007_199_254_740_991} precision={0} step={100} addonAfter="CLP" placeholder="0" />
+              <HourlyRateInput min={0} max={9_007_199_254_740_991} precision={0} step={100} placeholder="0" />
             </Form.Item>
             <Form.Item><Button type="primary" htmlType="submit" loading={busy}>Publicar nueva versión</Button></Form.Item>
           </Form>}

@@ -90,7 +90,7 @@ export function DashboardPage() {
       <Tag className="dashboard-unit-tag">CLP · valores líquidos estimados</Tag>
     </section>
 
-    <Card className="filter-card" bordered={false}>
+    <Card className="filter-card" variant="borderless">
       <div className="dashboard-filters">
         {isAdmin && <label><span>Profesional</span><Select
           showSearch
@@ -120,14 +120,14 @@ export function DashboardPage() {
       </div>
     </Card>
 
-    {error && <Alert type="error" showIcon message={error} />}
+    {error && <Alert type="error" showIcon title={error} />}
     {loading ? <Skeleton active paragraph={{ rows: 8 }} /> : isAdmin && !professionalId ? (
-      <Card className="empty-workspace" bordered={false}><Empty description="Selecciona un profesional para consultar su evolución." /></Card>
+      <Card className="empty-workspace" variant="borderless"><Empty description="Selecciona un profesional para consultar su evolución." /></Card>
     ) : data ? <>
-      <Card className="dashboard-table-card" bordered={false}>
+      <Card className="dashboard-table-card" variant="borderless">
         <div className="section-card-heading">
           <div><Typography.Text className="eyebrow">DETALLE MENSUAL</Typography.Text><Typography.Title level={3}>Líquido por institución</Typography.Title></div>
-          <Tag bordered={false}>{data.institutions.length} instituciones</Tag>
+          <Tag variant="filled">{data.institutions.length} instituciones</Tag>
         </div>
         {data.institutions.length === 0 ? <Empty description="No hay instituciones asociadas a este profesional." /> : <Table<DashboardMonth>
           rowKey={row => `${row.year}-${row.month}`}
@@ -140,7 +140,7 @@ export function DashboardPage() {
         />}
       </Card>
 
-      <Card className="chart-card" bordered={false}>
+      <Card className="chart-card" variant="borderless">
         <div className="section-card-heading">
           <div><Typography.Text className="eyebrow">TENDENCIA EN EL TIEMPO</Typography.Text><Typography.Title level={3}>Evolución del líquido mensual</Typography.Title></div>
           <Typography.Text type="secondary">Los meses sin período aparecen como espacios en la línea.</Typography.Text>

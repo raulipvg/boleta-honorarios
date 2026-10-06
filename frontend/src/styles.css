@@ -150,8 +150,9 @@ a { color: inherit; }
 .rate-create-form .ant-form-item-label { font-size: 11px; }
 .rate-create-form .ant-input-number { min-width: 0; }
 .rate-create-form .rate-year-input { width: 72px; }
+.rate-create-form .rate-hourly-input-compact { width: max-content; max-width: 100%; }
 .rate-create-form .rate-hourly-input { width: 118px; }
-.rate-create-form .ant-input-number-group-addon { color: #718087; }
+.rate-create-form .rate-hourly-input-compact .ant-space-addon { color: #718087; }
 
 .account-create-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
 .account-create-grid .account-create-submit { display: flex; align-items: center; padding-bottom: 24px; }

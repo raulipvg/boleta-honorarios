@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, Button, Card, Form, Input, Typography, message } from 'antd'
+import { Alert, App as AntdApp, Button, Card, Form, Input, Typography } from 'antd'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { getApiErrorMessage } from '../services/apiClient'
@@ -52,13 +52,13 @@ export function LoginPage() {
         <Typography.Text className="auth-visual-foot">GESTIÓN DE INGRESOS POR HONORARIOS</Typography.Text>
       </div>
       <section className="auth-form-side">
-        <Card className="auth-card" bordered={false}>
+        <Card className="auth-card" variant="borderless">
           <div className="auth-card-heading">
             <Typography.Text className="eyebrow">BIENVENIDO DE VUELTA</Typography.Text>
             <Typography.Title level={2}>Inicia sesión</Typography.Title>
             <Typography.Paragraph>Ingresa con el nombre de usuario asignado por tu administrador.</Typography.Paragraph>
           </div>
-          {error && <Alert type="error" showIcon message={error} className="form-alert" />}
+          {error && <Alert type="error" showIcon title={error} className="form-alert" />}
           <Form<LoginForm> layout="vertical" requiredMark={false} onFinish={onFinish} size="large">
             <Form.Item name="userName" label="Nombre de usuario" rules={[{ required: true, message: 'Ingresa tu nombre de usuario.' }]}>
               <Input autoComplete="username" placeholder="Tu nombre de usuario" autoFocus />
@@ -79,6 +79,7 @@ export function LoginPage() {
 }
 
 export function PasswordChangePage() {
+  const { message } = AntdApp.useApp()
   const auth = useAuth()
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
@@ -110,12 +111,12 @@ export function PasswordChangePage() {
 
   return (
     <main className="password-change-page">
-      <Card className="password-change-card" bordered={false}>
+      <Card className="password-change-card" variant="borderless">
         <span className="brand-mark">H</span>
         <Typography.Text className="eyebrow">{auth.temporaryUserName ?? 'SEGURIDAD DE LA CUENTA'}</Typography.Text>
         <Typography.Title level={2}>Crea tu contraseña personal</Typography.Title>
         <Typography.Paragraph>La contraseña temporal debe cambiarse antes de continuar. Usa al menos 15 caracteres.</Typography.Paragraph>
-        {error && <Alert type="error" showIcon message={error} className="form-alert" />}
+        {error && <Alert type="error" showIcon title={error} className="form-alert" />}
         {!done && <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
           <Form.Item name="currentPassword" label="Contraseña temporal o actual" rules={[{ required: true }]}>
             <Input.Password autoComplete="current-password" />

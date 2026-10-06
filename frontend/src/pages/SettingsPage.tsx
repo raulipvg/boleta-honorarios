@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Card, Col, Form, Input, Row, Skeleton, Table, Tag, Typography, message, type TableColumnsType } from 'antd'
+import { Alert, App as AntdApp, Button, Card, Col, Form, Input, Row, Skeleton, Table, Tag, Typography, type TableColumnsType } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { incomeService } from '../services/incomeService'
@@ -12,6 +12,7 @@ interface ProfileForm { name: string }
 interface PasswordForm { currentPassword: string; newPassword: string; confirmPassword: string }
 
 export function SettingsPage() {
+  const { message } = AntdApp.useApp()
   const auth = useAuth()
   const navigate = useNavigate()
   const canReadProfile = auth.hasPermission(PermissionCodes.profileRead)
@@ -58,11 +59,11 @@ export function SettingsPage() {
   return <div className="page-stack">
     <section className="page-heading"><div><Typography.Text className="eyebrow">PREFERENCIAS Y SEGURIDAD</Typography.Text><Typography.Title level={1}>Configuración.</Typography.Title>
       <Typography.Paragraph>{canReadProfile ? `Perfil de ${profileName || auth.identity?.userName}.` : 'Parámetros globales de lectura y seguridad de la cuenta.'}</Typography.Paragraph></div></section>
-    {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} />}
+    {error && <Alert type="error" showIcon title={error} closable={{ onClose: () => setError(null) }} />}
     {loading ? <Skeleton active /> : <>
       <Row gutter={[18, 18]}>
         {canReadProfile && <Col xs={24} lg={8}>
-          <Card className="settings-card" bordered={false}>
+          <Card className="settings-card" variant="borderless">
             <div className="section-card-heading"><div><Typography.Text className="eyebrow">PERFIL PROFESIONAL</Typography.Text><Typography.Title level={3}>Tus datos</Typography.Title></div></div>
             <Form form={form} layout="vertical" onFinish={updateProfile} requiredMark={false}>
               <Form.Item name="name" label="Nombre del perfil" rules={[{ required: true, whitespace: true }, { max: 200 }]}><Input disabled={!canEditProfile} maxLength={200} /></Form.Item>
@@ -72,7 +73,7 @@ export function SettingsPage() {
         </Col>}
 
         <Col xs={24} lg={canReadProfile ? 16 : 24}>
-          <Card className="settings-card" bordered={false}>
+          <Card className="settings-card" variant="borderless">
             <div className="section-card-heading"><div><Typography.Text className="eyebrow">SEGURIDAD</Typography.Text><Typography.Title level={3}>Cambiar contraseña</Typography.Title></div></div>
             <Typography.Paragraph>Usa al menos 15 caracteres. Al actualizarla, se cerrarán las sesiones activas.</Typography.Paragraph>
             <Form form={passwordForm} layout="vertical" onFinish={changePassword} requiredMark={false}>
@@ -93,7 +94,7 @@ export function SettingsPage() {
         </Col>
       </Row>
 
-      <Card className="settings-card" bordered={false}>
+      <Card className="settings-card" variant="borderless">
         <div className="section-card-heading"><div><Typography.Text className="eyebrow">PARÁMETROS ANUALES</Typography.Text><Typography.Title level={3}>Retención de boletas</Typography.Title></div><Tag>Solo lectura</Tag></div>
         <Typography.Paragraph>Las tasas se administran mediante configuración controlada. Cada período conserva la tasa que tenía al crearse.</Typography.Paragraph>
         <Table<RetentionRate> rowKey="year" columns={columns} dataSource={retentionRates} pagination={false} />

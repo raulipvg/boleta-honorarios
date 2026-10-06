@@ -1,4 +1,4 @@
-import { ConfigProvider, Spin } from 'antd'
+import { App as AntdApp, ConfigProvider, Spin } from 'antd'
 import esES from 'antd/locale/es_ES'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
@@ -36,9 +36,11 @@ export default function App() {
       Table: { headerBg: '#f6f8f8', rowHoverBg: '#f4faf9' },
     },
   }}>
-    <BrowserRouter>
-      <AuthProvider><ApplicationRoutes /></AuthProvider>
-    </BrowserRouter>
+    <AntdApp>
+      <BrowserRouter>
+        <AuthProvider><ApplicationRoutes /></AuthProvider>
+      </BrowserRouter>
+    </AntdApp>
   </ConfigProvider>
 }
 

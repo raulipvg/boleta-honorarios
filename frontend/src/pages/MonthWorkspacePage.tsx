@@ -194,7 +194,7 @@ export function MonthWorkspacePage() {
         </Space>
       </section>
 
-      {isAdmin && <Card className="filter-card" bordered={false}>
+      {isAdmin && <Card className="filter-card" variant="borderless">
         <Space wrap>
           <Typography.Text strong>Profesional</Typography.Text>
           <Select
@@ -210,9 +210,9 @@ export function MonthWorkspacePage() {
         </Space>
       </Card>}
 
-      {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} />}
+      {error && <Alert type="error" showIcon title={error} closable={{ onClose: () => setError(null) }} />}
       {loading ? <Skeleton active paragraph={{ rows: 5 }} /> : !workspace ? (
-        <Card className="empty-workspace" bordered={false}><Empty description="Selecciona un profesional para consultar su período." /></Card>
+        <Card className="empty-workspace" variant="borderless"><Empty description="Selecciona un profesional para consultar su período." /></Card>
       ) : (
         <>
           <section className="month-summary-card">
@@ -233,7 +233,7 @@ export function MonthWorkspacePage() {
             </div>
           </section>
 
-          {isAdmin && <Alert className="readonly-alert" type="info" showIcon message="Vista de administrador" description="Puedes consultar períodos, horas y montos. Las modificaciones de horas corresponden exclusivamente al profesional." />}
+          {isAdmin && <Alert className="readonly-alert" type="info" showIcon title="Vista de administrador" description="Puedes consultar períodos, horas y montos. Las modificaciones de horas corresponden exclusivamente al profesional." />}
 
           {canEdit && <Modal
             title="Agregar institución a este mes"
@@ -250,15 +250,15 @@ export function MonthWorkspacePage() {
             confirmLoading={busy}
             okButtonProps={{ disabled: !institutionToAdd || busy }}
             closable={!busy}
-            maskClosable={!busy}
+            mask={{ closable: !busy }}
             keyboard={!busy}
           >
-            {addInstitutionError && <Alert className="form-alert" type="error" showIcon message={addInstitutionError} />}
+            {addInstitutionError && <Alert className="form-alert" type="error" showIcon title={addInstitutionError} />}
             {availableRelationships.length === 0
               ? <Alert
                 type="info"
                 showIcon
-                message="No hay instituciones disponibles para este mes."
+                title="No hay instituciones disponibles para este mes."
                 description="Vincula una institución y configura su tarifa anual para poder agregarla."
               />
               : <>
@@ -278,14 +278,14 @@ export function MonthWorkspacePage() {
               </>}
           </Modal>}
 
-          {workspace.institutions.length === 0 && <Card className="empty-period" bordered={false}>
+          {workspace.institutions.length === 0 && <Card className="empty-period" variant="borderless">
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={workspace.exists ? 'Todavía no agregas instituciones a este mes.' : 'Este período aún no tiene actividad.'} />
           </Card>}
 
           <Row gutter={[18, 18]}>
             {workspace.institutions.map((institution, index) => (
               <Col key={institution.professionalInstitutionId}>
-                <Card className="institution-card" bordered={false}>
+                <Card className="institution-card" variant="borderless">
                   <div className="institution-card-top">
                     <div className="institution-title-wrap">
                       <span className={`institution-index index-${index % 4}`}>{String(index + 1).padStart(2, '0')}</span>
@@ -409,7 +409,7 @@ function SummaryMetric({ label, value, hint, emphasis = false }: { label: string
   return <div className={`summary-metric ${emphasis ? 'summary-metric-emphasis' : ''}`}>
     <Typography.Text>{label}</Typography.Text>
     <Typography.Title level={3}>{value}</Typography.Title>
-    {hint && <Tag bordered={false}>{hint}</Tag>}
+    {hint && <Tag variant="filled">{hint}</Tag>}
   </div>
 }
 

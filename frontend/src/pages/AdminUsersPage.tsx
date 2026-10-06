@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, message, type TableColumnsType } from 'antd'
+import { Alert, App as AntdApp, Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd'
 import { incomeService } from '../services/incomeService'
 import { getApiErrorMessage } from '../services/apiClient'
 import type { AccountSummary } from '../types/api'
@@ -13,6 +13,7 @@ interface NewAccountForm {
 }
 
 export function AdminUsersPage() {
+  const { message } = AntdApp.useApp()
   const [accounts, setAccounts] = useState<AccountSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -72,9 +73,9 @@ export function AdminUsersPage() {
     <section className="page-heading"><div><Typography.Text className="eyebrow">ADMINISTRACIÓN</Typography.Text><Typography.Title level={1}>Acceso de las personas.</Typography.Title>
       <Typography.Paragraph>Crea cuentas profesionales y administra sus credenciales temporales.</Typography.Paragraph></div>
       <Tag color="geekblue">Sin registro público</Tag></section>
-    {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} />}
+    {error && <Alert type="error" showIcon title={error} closable={{ onClose: () => setError(null) }} />}
 
-    <Card className="create-account-card" bordered={false}>
+    <Card className="create-account-card" variant="borderless">
       <div className="section-card-heading"><div><Typography.Text className="eyebrow">NUEVA CUENTA</Typography.Text><Typography.Title level={3}>Crear usuario</Typography.Title></div>
         <Typography.Text type="secondary">Las contraseñas temporales no se registran ni se vuelven a mostrar.</Typography.Text></div>
       <Form form={createForm} layout="vertical" onFinish={createAccount} requiredMark={false} className="account-create-grid">
@@ -93,12 +94,12 @@ export function AdminUsersPage() {
         </Form.Item>}
         <div className="account-create-submit"><Button type="primary" htmlType="submit" loading={submitting}>Crear cuenta</Button></div>
       </Form>
-      <Alert type="info" showIcon message="Entrega la contraseña temporal por un canal seguro. La persona deberá definir su propia contraseña en el primer ingreso." />
+      <Alert type="info" showIcon title="Entrega la contraseña temporal por un canal seguro. La persona deberá definir su propia contraseña en el primer ingreso." />
     </Card>
 
-    <Card className="dashboard-table-card" bordered={false}>
+    <Card className="dashboard-table-card" variant="borderless">
       <div className="section-card-heading"><div><Typography.Text className="eyebrow">CUENTAS DEL SISTEMA</Typography.Text><Typography.Title level={3}>Usuarios registrados</Typography.Title></div>
-        <Tag bordered={false}>{accounts.length} cuentas</Tag></div>
+        <Tag variant="filled">{accounts.length} cuentas</Tag></div>
       <Table<AccountSummary> rowKey="id" columns={columns} dataSource={accounts} loading={loading} pagination={{ pageSize: 10, showSizeChanger: false }} scroll={{ x: 900 }} />
     </Card>
 
