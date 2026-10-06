@@ -83,8 +83,7 @@ a { color: inherit; }
 .month-summary-heading .eyebrow { color: #85cbb9 !important; }
 .month-summary-heading h2.ant-typography { margin: 7px 0 0; color: white; font-size: 23px; }
 .save-feedback { color: #bfd0d3; font-size: 12px; }
-.saving-pulse, .saved-check { display: inline-grid; width: 19px; height: 19px; margin-right: 5px; place-items: center; border-radius: 50%; background: rgba(104,196,176,.19); color: #86dac5; }
-.saving-pulse { width: 9px; height: 9px; background: #edb86a; animation: pulse 1s infinite; }
+.saving-pulse { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%; background: #edb86a; animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
 .summary-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin-top: 26px; }
 .summary-metric { min-height: 85px; padding: 15px 17px; border: 1px solid rgba(255,255,255,.12); border-radius: 13px; background: rgba(255,255,255,.045); }
@@ -111,12 +110,13 @@ a { color: inherit; }
 .hour-editor-wrap input { font-variant-numeric: tabular-nums; font-weight: 650; }
 .hour-editor-draft .ant-input-affix-wrapper { border-color: #7bbdb0; background: #f5fbf9; }
 .hour-unit { color: #819095; font-size: 11px; }
-.hour-editor-feedback { display: flex; flex: 0 1 auto; align-items: center; gap: 3px; min-width: 0; }
-.save-state { font-size: 10px; }
-.state-saving, .state-pending { color: #b27b31 !important; }
-.state-saved { color: #33896c !important; }
-.state-error, .state-conflict, .inline-error { color: #bf514b !important; }
-.inline-error { font-size: 10px; }
+.hour-input-status { display: inline-flex; flex: 0 0 16px; align-items: center; justify-content: center; width: 16px; height: 16px; }
+.hour-input-status .anticon { font-size: 14px; }
+.hour-save-pending { color: #b27b31; }
+.hour-save-spinner { color: #167d78; }
+.hour-save-error { color: #bf514b; }
+.hour-save-conflict { color: #d08a3c; }
+.hour-reapply-button { flex: 0 0 auto; padding-inline: 4px; font-size: 11px; }
 .empty-hour-hint { padding: 12px; border: 1px dashed #dfe7e3; border-radius: 10px; color: #96a1a2; font-size: 12px; }
 .add-hour-button { margin: 5px 0 15px; border-color: #cddbd6; color: #387e76; background: #fbfdfc; }
 .institution-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; padding: 15px 0 0; border-top: 1px solid #edf0ef; }

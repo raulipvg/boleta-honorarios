@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { CloseOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Col, DatePicker, Empty, Input, Modal, Popconfirm, Row, Select, Skeleton, Space, Tag, Typography, type InputRef } from 'antd'
+import { ClockCircleOutlined, CloseOutlined, ExclamationCircleFilled, LoadingOutlined, PlusOutlined, WarningFilled } from '@ant-design/icons'
+import { App as AntdApp, Alert, Button, Card, Col, DatePicker, Empty, Input, Modal, Popconfirm, Row, Select, Skeleton, Space, Tag, Tooltip, Typography, type InputRef } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { periodService } from '../services/periods/periodService'
 import { hourRecordService } from '../services/hours/hourRecordService'
@@ -13,7 +13,15 @@ import { useAuth } from '../hooks/useAuth'
 import { PermissionCodes, RoleCodes } from '../constants/authorization'
 import type { HourRecord, MonthlyWorkspace, ProfessionalInstitution, ProfessionalSummary, SavedHourRecord } from '../types/api'
 
+const HOUR_SUCCESS_MESSAGE_KEY = 'month-hour-save-success'
+const getHourResultMessageKey = (rowId: string) => `month-hour-result-${rowId}`
+
 export function MonthWorkspacePage() {
+  const { message } = AntdApp.useApp()
+  const notifyHourResult = (notification: HourNotification, clearKey?: string) => {
+    if (clearKey) message.destroy(clearKey)
+    message.open(notification)
+  }
   const auth = useAuth()
   const isAdmin = auth.hasRole(RoleCodes.administrator)
   const canEdit = auth.hasPermission(PermissionCodes.periodsManage) && auth.hasPermission(PermissionCodes.hoursManage)
@@ -30,10 +38,8 @@ export function MonthWorkspacePage() {
   const [addInstitutionError, setAddInstitutionError] = useState<string | null>(null)
   const [draftRows, setDraftRows] = useState<{ institutionId: string; key: number }[]>([])
   const [loadingOlderInstitutionId, setLoadingOlderInstitutionId] = useState<string | null>(null)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
   const draftSequence = useRef(0)
   const { year, month } = monthValue(selectedMonth)
-  const markSaved = () => setSavedAt(value => (value ?? 0) + 1)
 
   const loadWorkspace = useCallback(async () => {
     if (isAdmin && !professionalId) return null
@@ -76,7 +82,7 @@ export function MonthWorkspacePage() {
       setWorkspace(result)
       setAddInstitutionModalOpen(false)
       setInstitutionToAdd(undefined)
-      markSaved()
+      message.success('Institución agregada al mes.')
     } catch (requestError) {
       setAddInstitutionError(getApiErrorMessage(requestError))
     } finally {
@@ -88,7 +94,7 @@ export function MonthWorkspacePage() {
     setBusy(true)
     try {
       setWorkspace(await periodService.removeInstitution(year, month, institutionId))
-      markSaved()
+      message.success('Institución retirada del mes.')
     } catch (requestError) {
       setError(getApiErrorMessage(requestError))
     } finally {
@@ -106,7 +112,6 @@ export function MonthWorkspacePage() {
 
   const commitHour = (relationId: string, result: SavedHourRecord) => {
     setWorkspace(current => mergeWorkspace(current, result.workspace, result.record, relationId))
-    markSaved()
   }
 
   const loadOlderHours = async (institution: MonthlyWorkspace['institutions'][number]) => {
@@ -225,7 +230,7 @@ export function MonthWorkspacePage() {
                 <Typography.Title level={2}>{isAdmin ? activeProfessional?.name ?? 'Período profesional' : 'Resumen del mes'}</Typography.Title>
               </div>
               <div className="save-feedback" aria-live="polite">
-                {busy ? <><span className="saving-pulse" /> Guardando…</> : savedAt ? <><span className="saved-check">✓</span> Guardado</> : 'Todos los cambios se confirman en el servidor'}
+                {busy ? <><span className="saving-pulse" /> Guardando…</> : 'Los cambios se confirman en el servidor'}
               </div>
             </div>
             <div className="summary-metrics">
@@ -310,6 +315,8 @@ export function MonthWorkspacePage() {
                     {institution.records.map(record => <HourEditor
                       key={record.id}
                       record={record}
+                      institutionName={institution.institutionName}
+                      onNotify={notifyHourResult}
                       canEdit={canEdit}
                       onCreate={hours => hourRecordService.create(year, month, institution.professionalInstitutionId, hours)}
                       onUpdate={(id, hours, version) => hourRecordService.update(id, hours, version)}
@@ -321,6 +328,8 @@ export function MonthWorkspacePage() {
                     {draftRows.filter(row => row.institutionId === institution.professionalInstitutionId).map(draft => <HourEditor
                       key={`draft-${draft.key}`}
                       draftKey={draft.key}
+                      institutionName={institution.institutionName}
+                      onNotify={notifyHourResult}
                       canEdit={canEdit}
                       onCreate={hours => hourRecordService.create(year, month, institution.professionalInstitutionId, hours)}
                       onUpdate={(id, hours, version) => hourRecordService.update(id, hours, version)}
@@ -365,7 +374,7 @@ export function MonthWorkspacePage() {
   async function deleteRecord(relationId: string, record: HourRecord): Promise<MonthlyWorkspace> {
     const updated = await hourRecordService.delete(record.id, record.version)
     setWorkspace(current => mergeWorkspace(current, updated, undefined, undefined, relationId, record.id))
-    markSaved()
+    notifyHourResult({ key: HOUR_SUCCESS_MESSAGE_KEY, type: 'success', content: 'Registro de horas eliminado.', duration: 2 }, getHourResultMessageKey(record.id))
     return updated
   }
 }
@@ -416,9 +425,18 @@ function SummaryMetric({ label, value, hint, emphasis = false }: { label: string
   </div>
 }
 
+type HourNotification = {
+  key: string
+  type: 'success' | 'error' | 'warning'
+  content: string
+  duration?: number
+}
+
 function HourEditor({
   record,
   draftKey,
+  institutionName,
+  onNotify,
   canEdit,
   onCreate,
   onUpdate,
@@ -431,6 +449,8 @@ function HourEditor({
 }: {
   record?: HourRecord
   draftKey?: number
+  institutionName: string
+  onNotify: (notification: HourNotification, clearKey?: string) => void
   canEdit: boolean
   onCreate: (hours: number) => Promise<SavedHourRecord>
   onUpdate: (id: string, hours: number, version: number) => Promise<SavedHourRecord>
@@ -442,7 +462,7 @@ function HourEditor({
   onPersisted?: () => void
 }) {
   const [editedValue, setEditedValue] = useState<string | null>(null)
-  const [state, setState] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error' | 'conflict'>('idle')
+  const [state, setState] = useState<'idle' | 'pending' | 'saving' | 'error' | 'conflict'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const inFlight = useRef(false)
@@ -450,6 +470,7 @@ function HourEditor({
   const value = editedValue ?? (record ? String(record.hours) : '')
   const isDraft = record === undefined
   const isDirty = editedValue !== null && editedValue !== (record ? String(record.hours) : '')
+  const resultMessageKey = getHourResultMessageKey(record?.id ?? `draft-${draftKey ?? 'new'}`)
 
   useEffect(() => {
     if (isDraft) requestAnimationFrame(() => inputRef.current?.focus())
@@ -463,13 +484,15 @@ function HourEditor({
       return
     }
     if (!/^\d+$/.test(normalized) || Number(normalized) < 1 || Number(normalized) > 2_147_483_647) {
-      setError('Ingresa horas enteras desde 1.')
+      const validationError = 'Ingresa horas enteras desde 1.'
+      setError(validationError)
       setState('error')
+      onNotify({ key: resultMessageKey, type: 'error', content: `${institutionName}: ${validationError}` })
       return
     }
     const hours = Number(normalized)
     if (record && record.hours === hours && !isDirty) {
-      setState('saved')
+      setState('idle')
       if (createNext) onEnterNext()
       return
     }
@@ -485,14 +508,28 @@ function HourEditor({
         : await onCreate(hours)
       setEditedValue(null)
       onCommitted(result)
-      setState('saved')
+      setState('idle')
+      onNotify({
+        key: HOUR_SUCCESS_MESSAGE_KEY,
+        type: 'success',
+        content: `Horas guardadas en ${institutionName}.`,
+        duration: 1.5,
+      }, resultMessageKey)
       if (wasDraft && draftKey !== undefined) onPersisted?.()
     } catch (requestError) {
       const statusCode = (requestError as { response?: { status?: number } }).response?.status
-      setState(statusCode === 409 ? 'conflict' : 'error')
-      setError(statusCode === 409
-        ? 'El registro cambió en otra sesión. Se recargaron los datos; reaplica tu valor si sigue siendo correcto.'
-        : getApiErrorMessage(requestError, 'No se pudo guardar el registro.'))
+      const isConflict = statusCode === 409
+      const saveError = isConflict
+        ? 'El registro cambió en otra sesión. Revisa los datos antes de reaplicar tu valor.'
+        : getApiErrorMessage(requestError, 'No se pudo guardar el registro.')
+      setState(isConflict ? 'conflict' : 'error')
+      setError(saveError)
+      onNotify({
+        key: resultMessageKey,
+        type: isConflict ? 'warning' : 'error',
+        content: `${institutionName}: ${saveError}`,
+        duration: 5,
+      })
       if (statusCode === 409) await onReload()
     } finally {
       inFlight.current = false
@@ -515,7 +552,12 @@ function HourEditor({
     }
   }
 
-  const statusLabel = state === 'saved' ? 'Guardado' : state === 'conflict' ? 'Conflicto' : state === 'error' ? 'Error al guardar' : null
+  const statusIndicator = <span className="hour-input-status" aria-live="polite">
+    {state === 'pending' && <Tooltip title="Pendiente de guardar"><ClockCircleOutlined className="hour-save-pending" role="img" aria-label="Pendiente de guardar" /></Tooltip>}
+    {state === 'saving' && <Tooltip title="Guardando registro"><LoadingOutlined className="hour-save-spinner" role="img" aria-label="Guardando registro" /></Tooltip>}
+    {state === 'error' && <Tooltip title={error ?? 'No se pudo guardar el registro'}><ExclamationCircleFilled className="hour-save-error" role="img" aria-label="Error al guardar" /></Tooltip>}
+    {state === 'conflict' && <Tooltip title={error ?? 'Conflicto al guardar el registro'}><WarningFilled className="hour-save-conflict" role="img" aria-label="Conflicto al guardar" /></Tooltip>}
+  </span>
 
   return <div className={`hour-editor-row ${isDraft ? 'hour-editor-draft' : ''}`}>
     <div className="hour-editor-wrap">
@@ -523,6 +565,7 @@ function HourEditor({
         ref={inputRef}
         data-hour-editor="true"
         aria-label="Horas trabajadas"
+        status={state === 'error' ? 'error' : state === 'conflict' ? 'warning' : undefined}
         styles={{ input: { textAlign: 'right' } }}
         inputMode="numeric"
         value={value}
@@ -535,8 +578,10 @@ function HourEditor({
         }}
         onBlur={() => { if (isDirty || isDraft) void save(false) }}
         onKeyDown={keyDown}
+        prefix={statusIndicator}
         suffix={<span className="hour-unit">h</span>}
       />
+      {state === 'conflict' && <Button className="hour-reapply-button" size="small" type="link" onClick={() => void save(false)}>Reaplicar</Button>}
       {record && canEdit && <Popconfirm
         title="Eliminar registro"
         description="Se actualizarán los totales del mes."
@@ -544,15 +589,19 @@ function HourEditor({
         cancelText="Cancelar"
         onConfirm={async () => {
           setDeleting(true)
-          try { await onDelete(record) } catch (deleteError) { setError(getApiErrorMessage(deleteError)); setState('error') } finally { setDeleting(false) }
+          try {
+            await onDelete(record)
+          } catch (deleteError) {
+            const deleteErrorMessage = getApiErrorMessage(deleteError)
+            setError(deleteErrorMessage)
+            setState('error')
+            onNotify({ key: resultMessageKey, type: 'error', content: `${institutionName}: ${deleteErrorMessage}` })
+          } finally {
+            setDeleting(false)
+          }
         }}
-      ><Button type="text" danger size="large" icon={<CloseOutlined />} loading={state === 'saving'} disabled={deleting || state === 'pending'} aria-label={state === 'saving' ? 'Guardando registro' : 'Eliminar registro'} /></Popconfirm>}
-      {!record && canEdit && onCancel && <Button type="text" size="large" icon={<CloseOutlined />} loading={state === 'saving'} onClick={onCancel} aria-label={state === 'saving' ? 'Guardando registro' : 'Cancelar fila'} />}
-    </div>
-    <div className="hour-editor-feedback" aria-live="polite">
-      {statusLabel && <Typography.Text className={`save-state state-${state}`}>{statusLabel}</Typography.Text>}
-      {state === 'conflict' && <Button size="small" type="link" onClick={() => void save(false)}>Reaplicar</Button>}
-      {error && state !== 'conflict' && <Typography.Text type="danger" className="inline-error">{error}</Typography.Text>}
+      ><Button type="text" danger size="large" icon={<CloseOutlined />} loading={deleting} disabled={deleting || state === 'pending' || state === 'saving'} aria-label={deleting ? 'Eliminando registro' : 'Eliminar registro'} /></Popconfirm>}
+      {!record && canEdit && onCancel && <Button type="text" size="large" icon={<CloseOutlined />} disabled={state === 'saving'} onClick={onCancel} aria-label="Cancelar fila" />}
     </div>
   </div>
 }
