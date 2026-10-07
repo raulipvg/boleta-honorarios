@@ -21,7 +21,7 @@ public sealed partial class IncomeApplicationService
             .SingleOrDefaultAsync(x => x.ProfessionalId == ownerId && x.Year == year && x.Month == month, cancellationToken);
         if (period is null)
             return new MonthlyWorkspaceDto(null, ownerId, year, month, false, null, 0, 0, 0, 0,
-                0, 0, 0, 0, 0m, 0, Array.Empty<PeriodInstitutionDto>());
+                0, 0, 0, 0, 0L, 0, Array.Empty<PeriodInstitutionDto>());
         return await BuildWorkspaceAsync(period, cancellationToken);
     }
 

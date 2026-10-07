@@ -26,8 +26,8 @@ public sealed class PrivateLiquidation
     public long NetTotalClp { get; private set; }
     public long AttentionCount { get; private set; }
     public long? ReportedAttentionCount { get; private set; }
-    public decimal MinutesPerAttention { get; private set; }
-    public decimal TotalAttentionMinutes { get; private set; }
+    public int MinutesPerAttention { get; private set; }
+    public long TotalAttentionMinutes { get; private set; }
     public string Sha256 { get; private set; } = string.Empty;
     public string StorageKey { get; private set; } = string.Empty;
     public string OriginalFileName { get; private set; } = string.Empty;
@@ -54,7 +54,7 @@ public sealed class PrivateLiquidation
         long netTotalClp,
         long attentionCount,
         long? reportedAttentionCount,
-        decimal minutesPerAttention,
+        int minutesPerAttention,
         string sha256,
         string storageKey,
         string originalFileName,
@@ -114,6 +114,8 @@ public sealed class PrivateLiquidation
         ReportedAttentionCount = reportedAttentionCount;
         MinutesPerAttention = minutesPerAttention;
         TotalAttentionMinutes = checked(AttentionCount * MinutesPerAttention);
+        if (TotalAttentionMinutes > IncomeCalculator.MaxExactInteger)
+            throw new OverflowException("Los minutos totales exceden el rango entero exacto permitido.");
         Sha256 = sha256.ToUpperInvariant();
         StorageKey = storageKey;
         OriginalFileName = Path.GetFileName(originalFileName);

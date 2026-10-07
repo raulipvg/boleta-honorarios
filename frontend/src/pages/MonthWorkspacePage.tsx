@@ -240,11 +240,11 @@ export function MonthWorkspacePage() {
               }}>Ver liquidaciones</Button>
             </div>
             <div className="summary-metrics">
+              <SummaryMetric label="Horas de atención" value={`${formatHours(workspace.privateAttentionMinutes)} h`} />
               <SummaryMetric label="Bruto privado" value={formatClp(workspace.privateGrossTotalClp)} />
               <SummaryMetric label="Retención privada" value={formatClp(workspace.privateRetentionTotalClp)} />
               <SummaryMetric label="Líquido privado" value={formatClp(workspace.privateNetTotalClp)} emphasis />
               <SummaryMetric label="Atenciones" value={String(workspace.privateAttentionCount)} />
-              <SummaryMetric label="Minutos de atención" value={`${formatMinutes(workspace.privateAttentionMinutes)} min`} />
             </div>
           </Card>}
 
@@ -424,8 +424,8 @@ function mergeWorkspace(
   }
 }
 
-function formatMinutes(value: number): string {
-  return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 6 }).format(value)
+function formatHours(minutes: number): string {
+  return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 }).format(minutes / 60)
 }
 
 function SummaryMetric({ label, value, hint, emphasis = false }: { label: string; value: string; hint?: string; emphasis?: boolean }) {

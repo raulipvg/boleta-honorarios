@@ -21,6 +21,12 @@ export function MonthSelector({
       value={value}
       onChange={month => { if (month) onChange(month.date(1)) }}
       format={(month: Dayjs) => monthLabel(month.year(), month.month() + 1)}
+      placement="bottomLeft"
+      popupAlign={{
+        points: ['tc', 'bc'],
+        offset: [0, 4],
+        overflow: { adjustX: 1, adjustY: 1 },
+      }}
       inputReadOnly
       disabled={disabled}
     />

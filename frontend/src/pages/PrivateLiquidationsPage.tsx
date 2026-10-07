@@ -5,13 +5,12 @@ import {
   App as AntdApp,
   Button,
   Card,
-  Col,
   Descriptions,
   Empty,
   Form,
   InputNumber,
+  Modal,
   Popconfirm,
-  Row,
   Select,
   Skeleton,
   Space,
@@ -23,7 +22,7 @@ import {
   type TableColumnsType,
   type UploadFile,
 } from 'antd'
-import { DeleteOutlined, DownloadOutlined, FilePdfOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
 import { privateLiquidationService } from '../services/private-liquidations/privateLiquidationService'
 import { professionalService } from '../services/professionals/professionalService'
@@ -59,6 +58,8 @@ export function PrivateLiquidationsPage() {
   const [uploadFileList, setUploadFileList] = useState<UploadFile[]>([])
   const [minutesPerAttention, setMinutesPerAttention] = useState<number | null>(null)
   const [preview, setPreview] = useState<PrivateLiquidationPreview | null>(null)
+  const [importModalOpen, setImportModalOpen] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
@@ -93,52 +94,77 @@ export function PrivateLiquidationsPage() {
     return () => { active = false }
   }, [loadLiquidations])
 
+  const resetImportDraft = () => {
+    setPreview(null)
+    setSelectedFile(null)
+    setUploadFileList([])
+    setMinutesPerAttention(null)
+    setImportError(null)
+  }
+
+  const closeImportModal = () => {
+    if (busy) return
+    setImportModalOpen(false)
+    resetImportDraft()
+  }
+
   const previewDocument = async () => {
     if (!selectedFile) {
-      setError('Selecciona un archivo PDF.')
+      setImportError('Selecciona un archivo PDF.')
       return
     }
     if (selectedFile.size > MAX_PDF_BYTES) {
-      setError('El PDF no puede superar 1 MB.')
+      setImportError('El PDF no puede superar 1 MB.')
       return
     }
-    if (minutesPerAttention === null || minutesPerAttention <= 0) {
-      setError('Ingresa minutos por atención mayores que cero.')
+    if (minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1) {
+      setImportError('Ingresa un número entero de minutos por atención mayor que cero.')
       return
     }
 
+    const loadingKey = 'private-liquidation-analysis'
     setBusy(true)
-    setError(null)
+    setImportError(null)
     setPreview(null)
+    message.open({ key: loadingKey, type: 'loading', content: 'Analizando liquidación…', duration: 0 })
     try {
       setPreview(await privateLiquidationService.preview(selectedFile, minutesPerAttention))
+      message.destroy(loadingKey)
+      message.success('PDF analizado. Revisa los datos antes de importar.')
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, 'No se pudo interpretar el PDF.'))
+      setImportError(getApiErrorMessage(requestError, 'No se pudo interpretar el PDF.'))
     } finally {
+      message.destroy(loadingKey)
       setBusy(false)
     }
   }
 
   const confirmImport = async () => {
-    if (!selectedFile || !preview || minutesPerAttention === null) return
+    if (!selectedFile || !preview || minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1) return
+    const loadingKey = 'private-liquidation-import'
     setBusy(true)
-    setError(null)
+    setImportError(null)
+    message.open({ key: loadingKey, type: 'loading', content: 'Importando liquidación…', duration: 0 })
     try {
       const imported = await privateLiquidationService.import(selectedFile, minutesPerAttention, preview.sha256, preview.appliedRetentionPercentage)
-      setPreview(null)
-      setSelectedFile(null)
-      setUploadFileList([])
-      setMinutesPerAttention(null)
+      message.destroy(loadingKey)
+      setImportModalOpen(false)
+      resetImportDraft()
       if (imported.year !== year || imported.month !== month) {
         setLoading(true)
         setSelectedMonth(dayjs().year(imported.year).month(imported.month - 1).date(1))
       } else {
-        setLiquidations(await loadLiquidations())
+        try {
+          setLiquidations(await loadLiquidations())
+        } catch (requestError) {
+          setError(getApiErrorMessage(requestError, 'La liquidación se importó, pero no se pudo actualizar el listado.'))
+        }
       }
       message.success('Liquidación importada y agregada al período mensual.')
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, 'No se pudo importar la liquidación.'))
+      setImportError(getApiErrorMessage(requestError, 'No se pudo importar la liquidación.'))
     } finally {
+      message.destroy(loadingKey)
       setBusy(false)
     }
   }
@@ -211,7 +237,13 @@ export function PrivateLiquidationsPage() {
         <Typography.Title level={1}>Liquidaciones de Sanatorio Alemán.</Typography.Title>
         <Typography.Paragraph>Importa cada PDF y conserva el cálculo del líquido por documento.</Typography.Paragraph>
       </div>
-      <Tag color="purple">Participaciones · CLP</Tag>
+      <Space>
+        <Tag color="purple">Participaciones · CLP</Tag>
+        {canCreate && <Button type="primary" icon={<PlusOutlined />} disabled={!profileRut} onClick={() => {
+          resetImportDraft()
+          setImportModalOpen(true)
+        }}>Nueva liquidación</Button>}
+      </Space>
     </section>
 
     {isAdmin && <Card className="filter-card" variant="borderless">
@@ -238,100 +270,6 @@ export function PrivateLiquidationsPage() {
         title="Completa tu RUT profesional antes de importar una liquidación."
         action={<Button type="link" onClick={() => navigate('/settings')}>Ir a configuración</Button>}
       />}
-
-      {canCreate && <Card className="add-institution-card" variant="borderless">
-        <div className="section-card-heading">
-          <div><Typography.Text className="eyebrow">NUEVA LIQUIDACIÓN</Typography.Text><Typography.Title level={3}>Analizar PDF</Typography.Title></div>
-          <Tag color="blue">Máximo 1 MB</Tag>
-        </div>
-        <Form layout="vertical" requiredMark={false}>
-          <Row gutter={[16, 0]} align="bottom">
-            <Col xs={24} lg={14}>
-              <Form.Item label="Archivo PDF" required>
-                <Upload.Dragger
-                  accept="application/pdf,.pdf"
-                  maxCount={1}
-                  fileList={uploadFileList}
-                  beforeUpload={file => {
-                    if (file.size > MAX_PDF_BYTES) {
-                      setSelectedFile(null)
-                      setUploadFileList([])
-                      setPreview(null)
-                      setError('El PDF no puede superar 1 MB.')
-                      return Upload.LIST_IGNORE
-                    }
-                    setError(null)
-                    setSelectedFile(file)
-                    setPreview(null)
-                    setUploadFileList([{ uid: file.uid, name: file.name, status: 'done', originFileObj: file }])
-                    return false
-                  }}
-                  onRemove={() => { setSelectedFile(null); setPreview(null); setUploadFileList([]); return true }}
-                  disabled={busy || !profileRut}
-                  multiple={false}
-                >
-                  <p className="ant-upload-drag-icon"><FilePdfOutlined /></p>
-                  <p className="ant-upload-text">Selecciona o arrastra la liquidación</p>
-                  <p className="ant-upload-hint">Se procesan los servicios de la plantilla de Sanatorio Alemán.</p>
-                </Upload.Dragger>
-              </Form.Item>
-            </Col>
-            <Col xs={24} lg={6}>
-              <Form.Item label="Minutos por atención" required>
-                <Space.Compact style={{ width: '100%' }}>
-                  <InputNumber
-                    min={0}
-                    step={1}
-                    precision={6}
-                    value={minutesPerAttention ?? undefined}
-                    onChange={value => { setMinutesPerAttention(typeof value === 'number' ? value : null); setPreview(null) }}
-                    style={{ width: 'calc(100% - 56px)' }}
-                    disabled={busy}
-                  />
-                  <Space.Addon>min</Space.Addon>
-                </Space.Compact>
-              </Form.Item>
-            </Col>
-            <Col xs={24} lg={4}>
-              <Form.Item>
-                <Button type="primary" icon={<ReloadOutlined />} block disabled={!profileRut || !selectedFile || minutesPerAttention === null || minutesPerAttention <= 0} loading={busy} onClick={() => void previewDocument()}>
-                  Analizar
-                </Button>
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-      </Card>}
-
-      {preview && <Card className="institution-card" variant="borderless">
-        <div className="section-card-heading">
-          <div><Typography.Text className="eyebrow">PREVISUALIZACIÓN</Typography.Text><Typography.Title level={3}>Revisa los datos leídos</Typography.Title></div>
-          <Tag color="green">RUT cobrador validado</Tag>
-        </div>
-        <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
-          <Descriptions.Item label="Período">{monthLabel(preview.year, preview.month)} · {preview.fortnight}.ª quincena</Descriptions.Item>
-          <Descriptions.Item label="N.º liquidación">{preview.liquidationNumber}</Descriptions.Item>
-          <Descriptions.Item label="Fecha liquidación">{dayjs(preview.liquidationDate).format('DD-MM-YYYY')}</Descriptions.Item>
-          <Descriptions.Item label="Entidad pagadora">{preview.payerLegalName} · RUT {preview.payerRut}</Descriptions.Item>
-          <Descriptions.Item label="RUT cobrador">{preview.collectorRut}</Descriptions.Item>
-          <Descriptions.Item label="Servicio">{preview.paymentService}</Descriptions.Item>
-          <Descriptions.Item label="Ejecutor">{preview.executorName || '—'}</Descriptions.Item>
-          <Descriptions.Item label="Total servicio">{preview.serviceTotalClp === null ? '—' : formatClp(preview.serviceTotalClp)}</Descriptions.Item>
-          <Descriptions.Item label="Atenciones">{preview.attentionCount}</Descriptions.Item>
-          <Descriptions.Item label="Bruto">{formatClp(preview.grossTotalClp)}</Descriptions.Item>
-          <Descriptions.Item label={`Retención (${formatRate(preview.appliedRetentionPercentage)})`}>{formatClp(preview.retentionTotalClp)}</Descriptions.Item>
-          <Descriptions.Item label="Líquido calculado"><Typography.Text strong>{formatClp(preview.netTotalClp)}</Typography.Text></Descriptions.Item>
-          <Descriptions.Item label="Minutos por atención">{formatMinutes(preview.minutesPerAttention)} min</Descriptions.Item>
-          <Descriptions.Item label="Atenciones informadas">{preview.reportedAttentionCount ?? '—'}</Descriptions.Item>
-          <Descriptions.Item label="Minutos totales">{formatMinutes(preview.totalAttentionMinutes)} min</Descriptions.Item>
-        </Descriptions>
-        <Row justify="end" style={{ marginTop: 16 }}>
-          <Space>
-            <Button disabled={busy} onClick={() => setPreview(null)}>Volver</Button>
-            <Button type="primary" loading={busy} onClick={() => void confirmImport()}>Confirmar importación</Button>
-          </Space>
-        </Row>
-      </Card>}
 
       <Card className="dashboard-table-card" variant="borderless">
         <div className="section-card-heading">
@@ -360,9 +298,108 @@ export function PrivateLiquidationsPage() {
         </>}
       </Card>
     </>}
+
+    {canCreate && <Modal
+      title={<Space><FilePdfOutlined /> Nueva liquidación privada</Space>}
+      open={importModalOpen}
+      onCancel={closeImportModal}
+      onOk={() => { if (preview) void confirmImport(); else void previewDocument() }}
+      okText={preview ? 'Confirmar importación' : 'Analizar PDF'}
+      cancelText="Cancelar"
+      confirmLoading={busy}
+      okButtonProps={{ disabled: busy || (preview === null && (!profileRut || !selectedFile || minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1)) }}
+      cancelButtonProps={{ disabled: busy }}
+      closable={!busy}
+      maskClosable={!busy}
+      keyboard={!busy}
+      destroyOnHidden
+      width={1200}
+    >
+      {importError && <Alert type="error" showIcon title={importError} closable={{ onClose: () => setImportError(null) }} style={{ marginBottom: 16 }} />}
+      <Form layout="vertical" requiredMark={false}>
+        <Form.Item label="Archivo PDF" required>
+          <Upload.Dragger
+            accept="application/pdf,.pdf"
+            maxCount={1}
+            fileList={uploadFileList}
+            beforeUpload={file => {
+              if (file.size > MAX_PDF_BYTES) {
+                setSelectedFile(null)
+                setUploadFileList([])
+                setPreview(null)
+                setImportError('El PDF no puede superar 1 MB.')
+                return Upload.LIST_IGNORE
+              }
+              setImportError(null)
+              setSelectedFile(file)
+              setPreview(null)
+              setUploadFileList([{ uid: file.uid, name: file.name, status: 'done', originFileObj: file }])
+              return false
+            }}
+            onRemove={() => {
+              setSelectedFile(null)
+              setPreview(null)
+              setUploadFileList([])
+              setImportError(null)
+              return true
+            }}
+            disabled={busy || !profileRut}
+            multiple={false}
+          >
+            <p className="ant-upload-drag-icon"><FilePdfOutlined /></p>
+            <p className="ant-upload-text">Selecciona o arrastra la liquidación</p>
+            <p className="ant-upload-hint">PDF de Sanatorio Alemán · Máximo 1 MB</p>
+          </Upload.Dragger>
+        </Form.Item>
+        <Form.Item label="Minutos enteros por atención" required>
+          <Space.Compact style={{ width: '100%' }}>
+            <InputNumber
+              min={1}
+              step={1}
+              precision={0}
+              value={minutesPerAttention ?? undefined}
+              onChange={value => {
+                setMinutesPerAttention(typeof value === 'number' && Number.isInteger(value) ? value : null)
+                setPreview(null)
+                setImportError(null)
+              }}
+              style={{ width: 'calc(100% - 56px)' }}
+              disabled={busy}
+            />
+            <Space.Addon>min</Space.Addon>
+          </Space.Compact>
+        </Form.Item>
+      </Form>
+      {preview && <>
+        <div className="section-card-heading">
+          <div><Typography.Text className="eyebrow">PREVISUALIZACIÓN</Typography.Text><Typography.Title level={4}>Revisa los datos leídos</Typography.Title></div>
+          <Tag color="green">RUT cobrador validado</Tag>
+        </div>
+        <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
+          <Descriptions.Item label="Período">{monthLabel(preview.year, preview.month)} · {preview.fortnight}.ª quincena</Descriptions.Item>
+          <Descriptions.Item label="N.º liquidación">{preview.liquidationNumber}</Descriptions.Item>
+          <Descriptions.Item label="Fecha liquidación">{dayjs(preview.liquidationDate).format('DD-MM-YYYY')}</Descriptions.Item>
+          <Descriptions.Item label="Entidad pagadora">{preview.payerLegalName} · RUT {preview.payerRut}</Descriptions.Item>
+          <Descriptions.Item label="RUT cobrador">{preview.collectorRut}</Descriptions.Item>
+          <Descriptions.Item label="Servicio">{preview.paymentService}</Descriptions.Item>
+          <Descriptions.Item label="Ejecutor">{preview.executorName || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Total servicio">{preview.serviceTotalClp === null ? '—' : formatClp(preview.serviceTotalClp)}</Descriptions.Item>
+          <Descriptions.Item label="Atenciones">{preview.attentionCount}</Descriptions.Item>
+          <Descriptions.Item label="Bruto">{formatClp(preview.grossTotalClp)}</Descriptions.Item>
+          <Descriptions.Item label={`Retención (${formatRate(preview.appliedRetentionPercentage)})`}>{formatClp(preview.retentionTotalClp)}</Descriptions.Item>
+          <Descriptions.Item label="Líquido calculado"><Typography.Text strong>{formatClp(preview.netTotalClp)}</Typography.Text></Descriptions.Item>
+          <Descriptions.Item label="Minutos por atención">{formatMinutes(preview.minutesPerAttention)} min</Descriptions.Item>
+          <Descriptions.Item label="Atenciones informadas">{preview.reportedAttentionCount ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="Minutos totales">{formatMinutes(preview.totalAttentionMinutes)} min</Descriptions.Item>
+        </Descriptions>
+        <Space style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <Button disabled={busy} onClick={() => setPreview(null)}>Volver a modificar</Button>
+        </Space>
+      </>}
+    </Modal>}
   </div>
 }
 
 function formatMinutes(value: number): string {
-  return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 6 }).format(value)
+  return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 }).format(value)
 }

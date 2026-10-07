@@ -215,7 +215,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 table.HasCheckConstraint("ck_periodos_mensuales_json_exact", "total_horas <= 9007199254740991 AND bruto_total_clp <= 9007199254740991 AND retencion_total_clp <= 9007199254740991 AND liquido_total_clp <= 9007199254740991");
                 table.HasCheckConstraint("ck_periodos_mensuales_liquido_consistente", "retencion_total_clp <= bruto_total_clp AND liquido_total_clp = bruto_total_clp - retencion_total_clp");
                 table.HasCheckConstraint("ck_periodos_mensuales_version", "version >= 1");
-                table.HasCheckConstraint("ck_periodos_mensuales_privados_no_negativos", "bruto_privado_total_clp >= 0 AND retencion_privada_total_clp >= 0 AND liquido_privado_total_clp >= 0 AND atenciones_privadas >= 0 AND minutos_atencion_privados >= 0");
+                table.HasCheckConstraint("ck_periodos_mensuales_privados_no_negativos", "bruto_privado_total_clp >= 0 AND retencion_privada_total_clp >= 0 AND liquido_privado_total_clp >= 0 AND atenciones_privadas >= 0 AND minutos_atencion_privados BETWEEN 0 AND 9007199254740991");
                 table.HasCheckConstraint("ck_periodos_mensuales_privados_liquido", "retencion_privada_total_clp <= bruto_privado_total_clp AND liquido_privado_total_clp = bruto_privado_total_clp - retencion_privada_total_clp");
                 table.HasCheckConstraint("ck_periodos_mensuales_privados_json_exact", "bruto_privado_total_clp <= 9007199254740991 AND retencion_privada_total_clp <= 9007199254740991 AND liquido_privado_total_clp <= 9007199254740991 AND atenciones_privadas <= 9007199254740991");
             });
@@ -235,7 +235,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.PrivateRetentionTotalClp).HasColumnName("retencion_privada_total_clp").HasDefaultValue(0L);
             entity.Property(x => x.PrivateNetTotalClp).HasColumnName("liquido_privado_total_clp").HasDefaultValue(0L);
             entity.Property(x => x.PrivateAttentionCount).HasColumnName("atenciones_privadas").HasDefaultValue(0L);
-            entity.Property(x => x.PrivateAttentionMinutes).HasColumnName("minutos_atencion_privados").HasPrecision(18, 6).HasDefaultValue(0m);
+            entity.Property(x => x.PrivateAttentionMinutes).HasColumnName("minutos_atencion_privados").HasColumnType("bigint").HasDefaultValue(0L);
             entity.Property(x => x.Version).HasColumnName("version").HasDefaultValue(1L).IsConcurrencyToken();
             entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
@@ -448,7 +448,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 table.HasCheckConstraint("ck_liquidaciones_privadas_json_exact", "bruto_total_clp <= 9007199254740991 AND retencion_total_clp <= 9007199254740991 AND liquido_total_clp <= 9007199254740991 AND atenciones <= 9007199254740991");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_atenciones", "atenciones > 0");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_atenciones_reportadas", "atenciones_reportadas_pdf IS NULL OR atenciones_reportadas_pdf >= 0");
-                table.HasCheckConstraint("ck_liquidaciones_privadas_minutos", "minutos_por_atencion > 0 AND minutos_totales >= 0");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_minutos", "minutos_por_atencion >= 1 AND minutos_totales BETWEEN 0 AND 9007199254740991");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_archivo", "tamano_archivo_bytes BETWEEN 1 AND 1048576");
             });
             entity.HasKey(x => x.Id);
@@ -472,8 +472,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.NetTotalClp).HasColumnName("liquido_total_clp");
             entity.Property(x => x.AttentionCount).HasColumnName("atenciones");
             entity.Property(x => x.ReportedAttentionCount).HasColumnName("atenciones_reportadas_pdf");
-            entity.Property(x => x.MinutesPerAttention).HasColumnName("minutos_por_atencion").HasPrecision(18, 6);
-            entity.Property(x => x.TotalAttentionMinutes).HasColumnName("minutos_totales").HasPrecision(18, 6);
+            entity.Property(x => x.MinutesPerAttention).HasColumnName("minutos_por_atencion").HasColumnType("integer");
+            entity.Property(x => x.TotalAttentionMinutes).HasColumnName("minutos_totales").HasColumnType("bigint");
             entity.Property(x => x.Sha256).HasColumnName("sha256").HasColumnType("character(64)").IsRequired();
             entity.Property(x => x.StorageKey).HasColumnName("storage_key").HasMaxLength(100).IsRequired();
             entity.Property(x => x.OriginalFileName).HasColumnName("nombre_archivo").HasMaxLength(255).IsRequired();

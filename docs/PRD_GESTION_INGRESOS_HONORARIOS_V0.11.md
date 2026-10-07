@@ -143,7 +143,7 @@ Líquido privado del PDF = Bruto privado del PDF − Retención privada del PDF
 ### 6.3 Atenciones y tiempo
 
 - Cantidad de atenciones por PDF = número de filas de atención leídas.
-- En la carga, el profesional ingresa los minutos de una atención para ese PDF. El valor debe ser mayor que cero; no se establece un máximo funcional.
+- En la carga, el profesional ingresa los minutos de una atención para ese PDF como un número entero mayor que cero; no se establece un máximo funcional.
 - Ese valor se aplica a todas las atenciones del PDF, sea cual sea el servicio indicado en la plantilla.
 - Minutos totales del PDF = cantidad de atenciones × minutos por atención.
 - El resumen mensual suma las atenciones y minutos de todos los documentos del mes.
@@ -185,7 +185,7 @@ El importador procesa la plantilla “Liquidación por Participaciones” y obti
 - Cantidad de atenciones contadas desde las filas identificadas por un N.º de atención válido.
 - Cantidad de cancelaciones indicada en el cierre, si aparece, para contrastarla con el conteo de filas.
 
-El profesional ingresa los minutos por atención durante la carga. El valor debe ser mayor que cero y se aplica uniformemente a todas las atenciones del PDF.
+El profesional ingresa los minutos enteros por atención durante la carga. El valor debe ser mayor que cero y se aplica uniformemente a todas las atenciones del PDF.
 
 El tamaño máximo del archivo cargado es 1 MB (1.048.576 bytes). Los PDF que superen ese límite se rechazan antes de procesarse.
 
@@ -344,9 +344,10 @@ Un mes sin información de ninguna modalidad aparece como un período sin datos.
 - **RF-22:** Permitir descargar el PDF solo al profesional propietario y a administradores autorizados, mediante validación de rol y propiedad en backend.
 - **RF-23:** Mostrar Sanatorio Alemán como una sola columna que suma sus pagadores y mapear los alias públicos acordados a sus etiquetas canónicas.
 - **RF-24:** Rechazar archivos PDF cuyo tamaño supere 1 MB (1.048.576 bytes).
-- **RF-25:** Aceptar para los minutos por atención cualquier valor numérico mayor que cero y aplicarlo a todas las atenciones del PDF.
+- **RF-25:** Aceptar para los minutos por atención únicamente valores enteros mayores que cero y aplicarlos a todas las atenciones del PDF.
 - **RF-26:** Aplicar la misma regla de lectura y cálculo a todos los servicios presentes en la plantilla de Sanatorio Alemán.
 - **RF-27:** Mostrar atenciones y minutos por PDF y como total mensual, sin calcular ni mostrar duración promedio.
+- **RF-28:** Presentar la selección del PDF, los minutos por atención y la previsualización dentro de un modal antes de confirmar la importación.
 
 ## 13. Criterios de aceptación
 
@@ -437,7 +438,7 @@ Las liquidaciones de ambos RUT pagadores de Sanatorio Alemán se suman en una so
 
 ### CA-19 — Validar minutos por atención
 
-El sistema rechaza minutos iguales o menores que cero y acepta cualquier valor mayor que cero. El valor se aplica a todas las atenciones del PDF. El dashboard muestra atenciones y minutos totales, no duración promedio.
+El sistema acepta únicamente minutos enteros mayores que cero y rechaza cero, valores negativos y fracciones. El valor se aplica a todas las atenciones del PDF. El dashboard muestra atenciones y minutos totales, no duración promedio.
 
 ### CA-20 — Limitar tamaño del PDF
 
@@ -458,6 +459,10 @@ Los nombres normalizados `SAPU Lorenzo Arenas` y `Lorenzo Arenas` aparecen agrup
 ### CA-24 — Mantener el total completo al filtrar
 
 El `Líquido combinado` mensual suma los líquidos de todas las instituciones del mes. Al filtrar columnas institucionales, el total combinado no cambia; el filtro solo afecta las columnas visibles y las series del gráfico.
+
+### CA-25 — Importar desde un modal
+
+El botón **Nueva liquidación** abre un modal que contiene la selección del PDF, los minutos por atención y la previsualización. Mientras se analiza o importa, se muestra el estado de carga y no se puede cerrar el modal. Cancelar limpia el borrador; un error conserva el modal abierto y muestra su detalle; una importación correcta cierra el modal y actualiza el período.
 
 ## 14. Reglas de negocio
 
@@ -488,7 +493,7 @@ El `Líquido combinado` mensual suma los líquidos de todas las instituciones de
 - **RN-25:** El profesional propietario y los administradores autorizados pueden descargar el PDF mediante una ruta protegida en backend.
 - **RN-26:** Atenciones y duración son métricas privadas; no se combinan ni se equiparan con las horas registradas para instituciones públicas.
 - **RN-27:** El dashboard muestra columnas dinámicas por institución con líquido positivo y una sola columna Sanatorio Alemán que suma sus entidades pagadoras.
-- **RN-28:** Los minutos ingresados por atención deben ser mayores que cero y se aplican por igual a todas las atenciones del PDF.
+- **RN-28:** Los minutos ingresados por atención deben ser enteros mayores que cero y se aplican por igual a todas las atenciones del PDF.
 - **RN-29:** La primera regla de Sanatorio Alemán se aplica uniformemente a todos los servicios de su plantilla.
 - **RN-30:** Los PDF cargados no pueden superar 1 MB (1.048.576 bytes).
 - **RN-31:** El dashboard no calcula ni presenta el promedio mensual de duración de atención.

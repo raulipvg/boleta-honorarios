@@ -26,7 +26,7 @@ public sealed class PrivateLiquidationApplicationService(
     private readonly ILogger<PrivateLiquidationApplicationService> _logger = logger;
 
     public async Task<PrivateLiquidationPreviewDto> PreviewAsync(
-        ActorContext actor, Stream pdf, long fileSizeBytes, string fileName, decimal minutesPerAttention,
+        ActorContext actor, Stream pdf, long fileSizeBytes, string fileName, int minutesPerAttention,
         CancellationToken cancellationToken)
     {
         var prepared = await PrepareAsync(actor, pdf, fileSizeBytes, fileName, minutesPerAttention, cancellationToken);
@@ -35,7 +35,7 @@ public sealed class PrivateLiquidationApplicationService(
     }
 
     public async Task<PrivateLiquidationDto> ImportAsync(
-        ActorContext actor, Stream pdf, long fileSizeBytes, string fileName, decimal minutesPerAttention,
+        ActorContext actor, Stream pdf, long fileSizeBytes, string fileName, int minutesPerAttention,
         string expectedSha256, decimal expectedRetentionPercentage, CancellationToken cancellationToken)
     {
         var prepared = await PrepareAsync(actor, pdf, fileSizeBytes, fileName, minutesPerAttention, cancellationToken);
@@ -212,14 +212,14 @@ public sealed class PrivateLiquidationApplicationService(
     }
 
     private async Task<PreparedLiquidation> PrepareAsync(
-        ActorContext actor, Stream pdf, long fileSizeBytes, string fileName, decimal minutesPerAttention,
+        ActorContext actor, Stream pdf, long fileSizeBytes, string fileName, int minutesPerAttention,
         CancellationToken cancellationToken)
     {
         var professionalId = RequireOwnProfessional(actor);
         if (fileSizeBytes is < 1 or > MaxPdfBytes)
             throw AppError.BadRequest("El PDF debe tener un tamaño entre 1 byte y 1 MB.");
-        if (minutesPerAttention <= 0)
-            throw AppError.BadRequest("Los minutos por atención deben ser mayores que cero.");
+        if (minutesPerAttention < 1)
+            throw AppError.BadRequest("Los minutos por atención deben ser enteros mayores que cero.");
 
         var originalFileName = Path.GetFileName(fileName);
         if (string.IsNullOrWhiteSpace(originalFileName) || originalFileName.Length > 255
@@ -316,7 +316,7 @@ public sealed class PrivateLiquidationApplicationService(
         var retention = rows.Aggregate(0L, (total, row) => checked(total + row.RetentionTotalClp));
         var net = rows.Aggregate(0L, (total, row) => checked(total + row.NetTotalClp));
         var attentionCount = rows.Aggregate(0L, (total, row) => checked(total + row.AttentionCount));
-        var attentionMinutes = rows.Aggregate(0m, (total, row) => checked(total + row.TotalAttentionMinutes));
+        var attentionMinutes = rows.Aggregate(0L, (total, row) => checked(total + row.TotalAttentionMinutes));
         period.UpdatePrivateTotals(gross, retention, net, attentionCount, attentionMinutes);
     }
 
@@ -463,7 +463,7 @@ public sealed class PrivateLiquidationApplicationService(
         PrivatePaymentRule Rule,
         decimal RetentionPercentage,
         GrossIncomeTotals Totals,
-        decimal MinutesPerAttention,
+        int MinutesPerAttention,
         byte[] PdfBytes,
         string PdfHash,
         string OriginalFileName,

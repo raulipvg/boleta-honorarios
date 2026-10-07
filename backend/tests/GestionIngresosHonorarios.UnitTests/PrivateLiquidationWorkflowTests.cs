@@ -70,13 +70,15 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         var secondFile = Encoding.ASCII.GetBytes("%PDF-1.7\nSECOND-SAMPLE");
 
         var firstPreview = await service.PreviewAsync(actor, new MemoryStream(firstFile), firstFile.Length,
-            "first.pdf", 12m, CancellationToken.None);
+            "first.pdf", 12, CancellationToken.None);
+        Assert.Equal(12, firstPreview.MinutesPerAttention);
+        Assert.Equal(516L, firstPreview.TotalAttentionMinutes);
         Assert.Equal(94_091, firstPreview.RetentionTotalClp);
         Assert.Equal(522_897, firstPreview.NetTotalClp);
         Assert.Empty(files.Files);
 
         var first = await service.ImportAsync(actor, new MemoryStream(firstFile), firstFile.Length,
-            "first.pdf", 12m, firstPreview.Sha256, firstPreview.AppliedRetentionPercentage, CancellationToken.None);
+            "first.pdf", 12, firstPreview.Sha256, firstPreview.AppliedRetentionPercentage, CancellationToken.None);
         Assert.Equal(43, first.ReportedAttentionCount);
 
         var correctedAnnualRate = await db.AnnualRetentionRates.SingleAsync(x => x.Year == 2026);
@@ -84,10 +86,11 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         await db.SaveChangesAsync();
 
         var secondPreview = await service.PreviewAsync(actor, new MemoryStream(secondFile), secondFile.Length,
-            "second.pdf", 20m, CancellationToken.None);
+            "second.pdf", 20, CancellationToken.None);
+        Assert.Equal(80L, secondPreview.TotalAttentionMinutes);
         Assert.Equal(15.25m, secondPreview.AppliedRetentionPercentage);
         var second = await service.ImportAsync(actor, new MemoryStream(secondFile), secondFile.Length,
-            "second.pdf", 20m, secondPreview.Sha256, secondPreview.AppliedRetentionPercentage, CancellationToken.None);
+            "second.pdf", 20, secondPreview.Sha256, secondPreview.AppliedRetentionPercentage, CancellationToken.None);
 
         Assert.Equal(11_203, second.RetentionTotalClp);
         Assert.Equal(62_257, second.NetTotalClp);
@@ -100,7 +103,7 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         Assert.Equal(105_294, period.PrivateRetentionTotalClp);
         Assert.Equal(585_154, period.PrivateNetTotalClp);
         Assert.Equal(47, period.PrivateAttentionCount);
-        Assert.Equal(596m, period.PrivateAttentionMinutes);
+        Assert.Equal(596L, period.PrivateAttentionMinutes);
 
         var administrator = new ActorContext(Guid.NewGuid(), null, IsAdministrator: true, IsProfessional: false);
         var downloaded = await service.DownloadAsync(administrator, first.Id, CancellationToken.None);
@@ -159,12 +162,12 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         Assert.Equal(588_543, Assert.Single(filteredDashboard.Months, x => x.Month == 9).TotalNetClp);
 
         var duplicate = await Assert.ThrowsAsync<AppError>(() =>
-            service.PreviewAsync(actor, new MemoryStream(firstFile), firstFile.Length, "first.pdf", 12m, CancellationToken.None));
+            service.PreviewAsync(actor, new MemoryStream(firstFile), firstFile.Length, "first.pdf", 12, CancellationToken.None));
         Assert.Equal(409, duplicate.StatusCode);
 
         var correctedFile = Encoding.ASCII.GetBytes("%PDF-1.7\nFIRST-SAMPLE-CORRECTED-EXPORT");
         var businessKeyConflict = await Assert.ThrowsAsync<AppError>(() =>
-            service.PreviewAsync(actor, new MemoryStream(correctedFile), correctedFile.Length, "first-corrected.pdf", 12m, CancellationToken.None));
+            service.PreviewAsync(actor, new MemoryStream(correctedFile), correctedFile.Length, "first-corrected.pdf", 12, CancellationToken.None));
         Assert.Equal(409, businessKeyConflict.StatusCode);
 
         await service.DeleteAsync(actor, first.Id, CancellationToken.None);
@@ -174,12 +177,12 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         Assert.Equal(11_203, period.PrivateRetentionTotalClp);
         Assert.Equal(62_257, period.PrivateNetTotalClp);
         Assert.Equal(4, period.PrivateAttentionCount);
-        Assert.Equal(80m, period.PrivateAttentionMinutes);
+        Assert.Equal(80L, period.PrivateAttentionMinutes);
 
         var replacementPreview = await service.PreviewAsync(actor, new MemoryStream(correctedFile), correctedFile.Length,
-            "first-corrected.pdf", 12m, CancellationToken.None);
+            "first-corrected.pdf", 12, CancellationToken.None);
         await service.ImportAsync(actor, new MemoryStream(correctedFile), correctedFile.Length,
-            "first-corrected.pdf", 12m, replacementPreview.Sha256, replacementPreview.AppliedRetentionPercentage, CancellationToken.None);
+            "first-corrected.pdf", 12, replacementPreview.Sha256, replacementPreview.AppliedRetentionPercentage, CancellationToken.None);
         Assert.Equal(2, await db.PrivateLiquidations.CountAsync());
         Assert.Equal(690_448, period.PrivateGrossTotalClp);
         Assert.Equal(47, period.PrivateAttentionCount);
@@ -196,27 +199,53 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         var unknownPayerService = CreateService(db, files, new SamplePrivateLiquidationParser(unknownPayer: true));
 
         var unknownPayer = await Assert.ThrowsAsync<AppError>(() =>
-            unknownPayerService.PreviewAsync(actor, new MemoryStream(bytes), bytes.Length, "unknown.pdf", 15m, CancellationToken.None));
+            unknownPayerService.PreviewAsync(actor, new MemoryStream(bytes), bytes.Length, "unknown.pdf", 15, CancellationToken.None));
         Assert.Equal(409, unknownPayer.StatusCode);
         Assert.Empty(files.Files);
 
         var zeroMinutes = await Assert.ThrowsAsync<AppError>(() =>
-            unknownPayerService.PreviewAsync(actor, new MemoryStream(bytes), bytes.Length, "zero-minutes.pdf", 0m, CancellationToken.None));
+            unknownPayerService.PreviewAsync(actor, new MemoryStream(bytes), bytes.Length, "zero-minutes.pdf", 0, CancellationToken.None));
         Assert.Equal(400, zeroMinutes.StatusCode);
+        Assert.Empty(files.Files);
+
+        var negativeMinutes = await Assert.ThrowsAsync<AppError>(() =>
+            unknownPayerService.PreviewAsync(actor, new MemoryStream(bytes), bytes.Length, "negative-minutes.pdf", -1, CancellationToken.None));
+        Assert.Equal(400, negativeMinutes.StatusCode);
         Assert.Empty(files.Files);
 
         var tooLargeFile = new byte[1_048_577];
         "%PDF-"u8.CopyTo(tooLargeFile);
         var tooLarge = await Assert.ThrowsAsync<AppError>(() =>
-            unknownPayerService.PreviewAsync(actor, new MemoryStream(tooLargeFile), tooLargeFile.Length, "too-large.pdf", 15m, CancellationToken.None));
+            unknownPayerService.PreviewAsync(actor, new MemoryStream(tooLargeFile), tooLargeFile.Length, "too-large.pdf", 15, CancellationToken.None));
         Assert.Equal(400, tooLarge.StatusCode);
         Assert.Empty(files.Files);
 
         var wrongCollectorService = CreateService(db, files, new SamplePrivateLiquidationParser(collectorRut: "17.123.456-5"));
         var wrongCollector = await Assert.ThrowsAsync<AppError>(() =>
-            wrongCollectorService.PreviewAsync(actor, new MemoryStream(bytes), bytes.Length, "wrong-owner.pdf", 15m, CancellationToken.None));
+            wrongCollectorService.PreviewAsync(actor, new MemoryStream(bytes), bytes.Length, "wrong-owner.pdf", 15, CancellationToken.None));
         Assert.Equal(409, wrongCollector.StatusCode);
         Assert.Empty(files.Files);
+    }
+
+    [Fact]
+    public async Task IntegerMinuteMigrationRejectsFractionalHistoricalValuesWithoutRounding()
+    {
+        await using var db = CreateContext();
+        await db.Database.MigrateAsync("20261007025339_AddReportedAttentionCountToPrivateLiquidations");
+
+        var period = new MonthlyPeriod(ProfessionalId, 2026, 9, 15.25m);
+        db.MonthlyPeriods.Add(period);
+        await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE periodos_mensuales SET minutos_atencion_privados = 2.5 WHERE id = {period.Id}");
+
+        var migrationFailure = await Assert.ThrowsAnyAsync<Exception>(() => db.Database.MigrateAsync());
+        Assert.Contains("No se pueden migrar los minutos", migrationFailure.ToString());
+
+        var preservedFraction = await db.Database.SqlQuery<decimal>(
+            $"SELECT minutos_atencion_privados AS \"Value\" FROM periodos_mensuales WHERE id = {period.Id}")
+            .SingleAsync();
+        Assert.Equal(2.5m, preservedFraction);
     }
 
     private PrivateLiquidationApplicationService CreateService(

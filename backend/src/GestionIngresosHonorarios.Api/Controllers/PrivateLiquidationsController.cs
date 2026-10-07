@@ -22,7 +22,7 @@ public sealed class PrivateLiquidationsController(
     [RequestFormLimits(MultipartBodyLengthLimit = 1_100_000)]
     public async Task<ActionResult<PrivateLiquidationPreviewDto>> Preview(
         [FromForm] IFormFile? file,
-        [FromForm] decimal minutesPerAttention,
+        [FromForm] int minutesPerAttention,
         CancellationToken cancellationToken)
     {
         if (file is null) throw AppError.BadRequest("Selecciona un PDF para analizar.");
@@ -41,7 +41,7 @@ public sealed class PrivateLiquidationsController(
     [RequestFormLimits(MultipartBodyLengthLimit = 1_100_000)]
     public async Task<ActionResult<PrivateLiquidationDto>> Import(
         [FromForm] IFormFile? file,
-        [FromForm] decimal minutesPerAttention,
+        [FromForm] int minutesPerAttention,
         [FromForm] string expectedSha256,
         [FromForm] decimal expectedRetentionPercentage,
         CancellationToken cancellationToken)

@@ -38,7 +38,7 @@ public sealed record MonthlyWorkspaceDto(
     long PrivateRetentionTotalClp,
     long PrivateNetTotalClp,
     long PrivateAttentionCount,
-    decimal PrivateAttentionMinutes,
+    long PrivateAttentionMinutes,
     long Version,
     IReadOnlyList<PeriodInstitutionDto> Institutions);
 public sealed record PrivateLiquidationPreviewDto(
@@ -62,8 +62,8 @@ public sealed record PrivateLiquidationPreviewDto(
     long NetTotalClp,
     long AttentionCount,
     long? ReportedAttentionCount,
-    decimal MinutesPerAttention,
-    decimal TotalAttentionMinutes,
+    int MinutesPerAttention,
+    long TotalAttentionMinutes,
     long FileSizeBytes,
     string OriginalFileName);
 
@@ -88,8 +88,8 @@ public sealed record PrivateLiquidationDto(
     long NetTotalClp,
     long AttentionCount,
     long? ReportedAttentionCount,
-    decimal MinutesPerAttention,
-    decimal TotalAttentionMinutes,
+    int MinutesPerAttention,
+    long TotalAttentionMinutes,
     DateTimeOffset ImportedAt);
 
 public sealed record DashboardInstitutionDto(string Key, string Name, string Type);
