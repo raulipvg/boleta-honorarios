@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ClockCircleOutlined, CloseOutlined, ExclamationCircleFilled, LoadingOutlined, PlusOutlined, WarningFilled } from '@ant-design/icons'
-import { App as AntdApp, Alert, Button, Card, Col, DatePicker, Empty, Input, Modal, Popconfirm, Row, Select, Skeleton, Space, Tag, Tooltip, Typography, type InputRef } from 'antd'
+import { App as AntdApp, Alert, Button, Card, Col, Empty, Input, Modal, Popconfirm, Row, Select, Skeleton, Space, Tag, Tooltip, Typography, type InputRef } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { periodService } from '../services/periods/periodService'
 import { hourRecordService } from '../services/hours/hourRecordService'
@@ -10,6 +10,7 @@ import { professionalInstitutionService } from '../services/professional-institu
 import { getApiErrorMessage } from '../services/apiClient'
 import { formatClp, formatRate } from '../utils/format'
 import { monthLabel, monthValue } from '../utils/date'
+import { MonthSelector } from '../components/layout/MonthSelector'
 import { useAuth } from '../hooks/useAuth'
 import { PermissionCodes, RoleCodes } from '../constants/authorization'
 import type { HourRecord, MonthlyWorkspace, ProfessionalInstitution, ProfessionalSummary, SavedHourRecord } from '../types/api'
@@ -155,11 +156,11 @@ export function MonthWorkspacePage() {
 
   const removeDraft = (key: number) => setDraftRows(rows => rows.filter(row => row.key !== key))
 
-  const setCurrentMonth = (direction: number) => {
+  const setCurrentMonth = (month: Dayjs) => {
     setLoading(true)
     setError(null)
     setDraftRows([])
-    setSelectedMonth(value => value.add(direction, 'month'))
+    setSelectedMonth(month.date(1))
   }
 
   const activeProfessional = professionals.find(x => x.id === professionalId)
@@ -173,24 +174,7 @@ export function MonthWorkspacePage() {
           <Typography.Paragraph>Registra cada bloque con libertad. Los totales se actualizan al guardar.</Typography.Paragraph>
         </div>
         <Space className="month-heading-controls" size={12} wrap>
-          <div className="month-switcher">
-            <Button aria-label="Mes anterior" onClick={() => setCurrentMonth(-1)}>‹</Button>
-            <DatePicker
-              picker="month"
-              allowClear={false}
-              value={selectedMonth}
-              onChange={value => {
-                if (!value) return
-                setLoading(true)
-                setError(null)
-                setDraftRows([])
-                setSelectedMonth(value.date(1))
-              }}
-              format="MMMM YYYY"
-              inputReadOnly
-            />
-            <Button aria-label="Mes siguiente" onClick={() => setCurrentMonth(1)}>›</Button>
-          </div>
+          <MonthSelector value={selectedMonth} onChange={setCurrentMonth} />
           {canEdit && !loading && workspace && <Button
             type="primary"
             icon={<PlusOutlined />}

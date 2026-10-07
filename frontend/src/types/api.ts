@@ -108,15 +108,6 @@ export interface DashboardMonth {
   month: number
   periodExists: boolean
   totalNetClp: number | null
-  publicHours: number | null
-  publicGrossClp: number | null
-  publicRetentionClp: number | null
-  publicNetClp: number | null
-  privateGrossClp: number | null
-  privateRetentionClp: number | null
-  privateNetClp: number | null
-  privateAttentionCount: number | null
-  privateAttentionMinutes: number | null
   institutions: DashboardInstitutionValue[]
 }
 

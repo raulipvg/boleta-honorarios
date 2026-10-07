@@ -286,29 +286,21 @@ La confirmación de una liquidación y la actualización de sus agregados privad
 
 ### Tabla mensual
 
-Cada mes muestra el desglose disponible:
+La tabla contiene año, mes, una columna por cada institución con líquido mayor que cero en al menos un mes del intervalo y una columna de `Líquido combinado`. No muestra grupos de columnas `Ingresos públicos` o `Ingresos privados`, ni columnas de horas, bruto, retención, atenciones o minutos.
 
-- Horas públicas.
-- Bruto, retención y líquido público estimado.
-- Bruto, retención y líquido privado.
-- Atenciones privadas y minutos totales de atención, únicamente para instituciones privadas.
-- Líquido mensual combinado.
+Las instituciones públicas se identifican por el nombre normalizado del catálogo. `SAPU Lorenzo Arenas` y `Lorenzo Arenas` se agrupan bajo la etiqueta **SAPU Lorenzo Arenas**; `SAR Tucapel` y `Tucapel` se agrupan bajo **SAR TUCAPEL**. Todas las demás instituciones públicas que tengan líquido positivo también se muestran con su nombre de catálogo.
 
-Sanatorio Alemán aparece como **una sola columna** y su líquido mensual suma las liquidaciones de sus entidades pagadoras, aunque tengan RUT distintos. El detalle de esa columna permite consultar cada PDF y su pagador. Las columnas de instituciones públicas mantienen sus valores calculados a partir de horas.
+Sanatorio Alemán aparece como **una sola columna** de tipo `Privada` y su líquido mensual suma las liquidaciones de sus entidades pagadoras, aunque tengan RUT distintos. El detalle permite consultar cada PDF y su pagador. Las demás instituciones privadas con líquido positivo aparecen como columnas independientes.
 
-Cada columna por institución muestra el líquido y su participación sobre el líquido combinado mensual: `líquido de la institución / líquido combinado del mes × 100`. El porcentaje se redondea al entero más cercano, con mitades alejándose de cero; los porcentajes se redondean por separado y pueden no sumar visualmente 100 %. Si el total líquido combinado es cero, la participación se presenta como `—`. Las métricas de pacientes/atenciones y minutos se muestran solo para instituciones privadas; no se inventan valores equivalentes para instituciones públicas.
+Cada columna por institución muestra el líquido y su participación sobre el líquido combinado mensual: `líquido de la institución / líquido combinado del mes × 100`. El porcentaje se redondea al entero más cercano, con mitades alejándose de cero; los porcentajes se redondean por separado y pueden no sumar visualmente 100 %. Si el total líquido combinado es cero, la participación se presenta como `—`.
 
-Para instituciones privadas se muestran las atenciones y los minutos por PDF y los minutos totales del mes. No se presenta una duración promedio mensual.
+Las instituciones con líquido cero en todos los meses del intervalo no generan una columna. En un mes con período, si una institución no registró ingreso, su celda muestra cero; si no hay período, el mes se muestra sin dato. Las atenciones y minutos se consultan en el workspace privado y en el detalle de cada PDF, no en esta tabla.
 
-El usuario puede consultar los documentos privados que componen el total del mes, con su quincena, pagador y valores calculados.
+El líquido combinado suma todas las instituciones públicas y privadas, sin importar si el usuario filtra qué columnas se muestran. El filtro solo modifica las columnas visibles y las series del gráfico.
 
 ### Gráfico
 
-El gráfico conserva la evolución temporal y permite distinguir:
-
-- Líquido público estimado.
-- Líquido privado calculado.
-- Líquido mensual combinado.
+El gráfico presenta una serie líquida por cada institución con ingresos en el intervalo y una serie del líquido mensual combinado. No presenta series agrupadas por modalidad pública o privada.
 
 Un mes sin información de ninguna modalidad aparece como un período sin datos. Si hay información de una modalidad, la otra aporta cero al total combinado de ese mes.
 
@@ -322,6 +314,7 @@ Un mes sin información de ninguna modalidad aparece como un período sin datos.
 - Como profesional, quiero ingresar los minutos por atención del PDF y consultar el tiempo total mensual.
 - Como profesional, quiero ver el bruto, la retención y el líquido por liquidación y por mes.
 - Como profesional, quiero comparar mis ingresos públicos y privados mes a mes, con un líquido mensual combinado.
+- Como profesional, quiero ver una columna de líquido por cada institución con ingresos en el intervalo, sin agrupaciones de métricas por modalidad.
 - Como profesional, quiero que una actualización de la tasa anual no modifique los cálculos de mis liquidaciones históricas.
 - Como administrador, quiero consultar los resúmenes de un profesional sin modificar sus registros.
 
@@ -337,7 +330,7 @@ Un mes sin información de ninguna modalidad aparece como un período sin datos.
 - **RF-08:** Usar la tasa anual global del período y conservar el snapshot aplicado.
 - **RF-09:** Rechazar o señalar errores de interpretación y cargas duplicadas.
 - **RF-10:** Actualizar los agregados privados mensuales junto con la liquidación importada.
-- **RF-11:** Mostrar métricas públicas, privadas y combinadas en el dashboard mensual.
+- **RF-11:** Mostrar en el dashboard mensual una columna de líquido por institución con datos y un líquido combinado, sin columnas agrupadas por modalidad.
 - **RF-12:** Validar propiedad y permisos en backend para cada lectura y escritura.
 - **RF-13:** Incorporar el RUT al perfil profesional, validarlo y normalizarlo; exigirlo antes de permitir la importación de PDF.
 - **RF-14:** Comparar el RUT del cobrador extraído con el RUT del profesional autenticado y rechazar la liquidación si no coinciden.
@@ -349,7 +342,7 @@ Un mes sin información de ninguna modalidad aparece como un período sin datos.
 - **RF-20:** Detectar duplicados por hash y por clave de negocio (profesional, RUT pagador, número de liquidación y año/mes/quincena). Un conflicto bloquea la nueva carga hasta que el propietario elimine la anterior.
 - **RF-21:** Permitir que solo el profesional propietario elimine su liquidación; borrar el archivo original y los datos asociados y actualizar los agregados mensuales transaccionalmente.
 - **RF-22:** Permitir descargar el PDF solo al profesional propietario y a administradores autorizados, mediante validación de rol y propiedad en backend.
-- **RF-23:** Mostrar Sanatorio Alemán como una institución/columna, sumando sus pagadores; mostrar atenciones y minutos solo para instituciones privadas.
+- **RF-23:** Mostrar Sanatorio Alemán como una sola columna que suma sus pagadores y mapear los alias públicos acordados a sus etiquetas canónicas.
 - **RF-24:** Rechazar archivos PDF cuyo tamaño supere 1 MB (1.048.576 bytes).
 - **RF-25:** Aceptar para los minutos por atención cualquier valor numérico mayor que cero y aplicarlo a todas las atenciones del PDF.
 - **RF-26:** Aplicar la misma regla de lectura y cálculo a todos los servicios presentes en la plantilla de Sanatorio Alemán.
@@ -440,7 +433,7 @@ La descarga está autorizada únicamente para el profesional propietario y los a
 
 ### CA-18 — Consolidar columna institucional privada
 
-Las liquidaciones de ambos RUT pagadores de Sanatorio Alemán se suman en una sola columna mensual de líquido. El detalle permite distinguirlas por PDF y entidad pagadora. Las métricas de atenciones y minutos no se aplican a columnas públicas.
+Las liquidaciones de ambos RUT pagadores de Sanatorio Alemán se suman en una sola columna mensual de líquido. El detalle permite distinguirlas por PDF y entidad pagadora.
 
 ### CA-19 — Validar minutos por atención
 
@@ -453,6 +446,18 @@ El sistema acepta archivos de hasta 1 MB (1.048.576 bytes) y rechaza archivos qu
 ### CA-21 — Tratar uniformemente los servicios de la plantilla
 
 Todas las filas de atención válidas de los servicios incluidos en la plantilla se cuentan y se consideran en la suma de `Valor Pago`. El cálculo de retención y líquido se aplica al total de la liquidación sin reglas adicionales por tipo de servicio.
+
+### CA-22 — Mostrar columnas institucionales dinámicas
+
+Para el intervalo seleccionado, el dashboard incluye todas las instituciones públicas o privadas con líquido mayor que cero en al menos un mes. Omite instituciones con cero durante todo el intervalo. No presenta grupos de columnas de ingresos públicos o privados ni métricas de horas, bruto, retención, atenciones o minutos.
+
+### CA-23 — Agrupar alias públicos
+
+Los nombres normalizados `SAPU Lorenzo Arenas` y `Lorenzo Arenas` aparecen agrupados bajo una columna `SAPU Lorenzo Arenas`. `SAR Tucapel` y `Tucapel` aparecen agrupados bajo `SAR TUCAPEL`. El líquido de cada columna canónica suma las relaciones que correspondan.
+
+### CA-24 — Mantener el total completo al filtrar
+
+El `Líquido combinado` mensual suma los líquidos de todas las instituciones del mes. Al filtrar columnas institucionales, el total combinado no cambia; el filtro solo afecta las columnas visibles y las series del gráfico.
 
 ## 14. Reglas de negocio
 
@@ -482,11 +487,14 @@ Todas las filas de atención válidas de los servicios incluidos en la plantilla
 - **RN-24:** Solo el profesional propietario puede eliminar una liquidación. La eliminación borra el PDF y sus datos, y actualiza los agregados del mes.
 - **RN-25:** El profesional propietario y los administradores autorizados pueden descargar el PDF mediante una ruta protegida en backend.
 - **RN-26:** Atenciones y duración son métricas privadas; no se combinan ni se equiparan con las horas registradas para instituciones públicas.
-- **RN-27:** El dashboard muestra una sola columna Sanatorio Alemán, sumando sus entidades pagadoras; el detalle mantiene cada liquidación separada.
+- **RN-27:** El dashboard muestra columnas dinámicas por institución con líquido positivo y una sola columna Sanatorio Alemán que suma sus entidades pagadoras.
 - **RN-28:** Los minutos ingresados por atención deben ser mayores que cero y se aplican por igual a todas las atenciones del PDF.
 - **RN-29:** La primera regla de Sanatorio Alemán se aplica uniformemente a todos los servicios de su plantilla.
 - **RN-30:** Los PDF cargados no pueden superar 1 MB (1.048.576 bytes).
 - **RN-31:** El dashboard no calcula ni presenta el promedio mensual de duración de atención.
+- **RN-32:** El dashboard omite instituciones con líquido cero en todos los meses del intervalo solicitado.
+- **RN-33:** Los alias públicos acordados se agrupan y se presentan con sus etiquetas canónicas.
+- **RN-34:** Los filtros de instituciones no alteran el líquido combinado mensual, que siempre suma todas las instituciones.
 
 ## 15. Decisiones pendientes
 

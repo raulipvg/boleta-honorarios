@@ -31,39 +31,18 @@ public sealed partial class IncomeApplicationService
             throw AppError.BadRequest("El intervalo de años solicitado no es válido.");
         var ownerId = ResolveProfessionalId(actor, professionalId);
 
-        var publicRelations = await (
-            from relation in _db.ProfessionalInstitutions.AsNoTracking()
-            join institution in _db.PublicInstitutions.AsNoTracking() on relation.PublicInstitutionId equals institution.Id
-            where relation.ProfessionalId == ownerId
-            select new { relation.Id, InstitutionId = institution.Id, institution.Name }
-        ).ToListAsync(cancellationToken);
-
-        var privateInstitutionRows = await (
-            from liquidation in _db.PrivateLiquidations.AsNoTracking()
-            join institution in _db.PrivateInstitutions.AsNoTracking() on liquidation.PrivateInstitutionId equals institution.Id
-            where liquidation.ProfessionalId == ownerId
-            select new { institution.Id, institution.Name }
-        ).Distinct().ToListAsync(cancellationToken);
-
-        var columns = publicRelations
-            .Select(x => new DashboardInstitutionDto($"public:{x.Id:D}", x.Name, "public"))
-            .Concat(privateInstitutionRows.Select(x => new DashboardInstitutionDto($"private:{x.Id:D}", x.Name, "private")))
-            .OrderBy(x => x.Name, StringComparer.CurrentCulture)
-            .ThenBy(x => x.Type, StringComparer.Ordinal)
-            .ToList();
-
-        if (institutionKeys is { Count: > 0 })
-        {
-            var requested = institutionKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (requested.Any(key => columns.All(column => !string.Equals(column.Key, key, StringComparison.OrdinalIgnoreCase))))
-                throw AppError.NotFound();
-            columns = columns.Where(column => requested.Contains(column.Key)).ToList();
-        }
-
         var periods = await _db.MonthlyPeriods.AsNoTracking()
             .Where(x => x.ProfessionalId == ownerId && x.Year >= fromYear && x.Year <= toYear)
             .ToListAsync(cancellationToken);
         var periodIds = periods.Select(x => x.Id).ToArray();
+
+        var publicRelations = await (
+            from relation in _db.ProfessionalInstitutions.AsNoTracking()
+            join institution in _db.PublicInstitutions.AsNoTracking() on relation.PublicInstitutionId equals institution.Id
+            where relation.ProfessionalId == ownerId
+            select new PublicInstitutionRelation(relation.Id, institution.Id, institution.Name, institution.NormalizedName)
+        ).ToListAsync(cancellationToken);
+
         var publicValues = await _db.PeriodInstitutions.AsNoTracking()
             .Where(x => periodIds.Contains(x.PeriodId))
             .Select(x => new { x.PeriodId, x.ProfessionalInstitutionId, x.NetTotalClp })
@@ -79,12 +58,60 @@ public sealed partial class IncomeApplicationService
             })
             .ToListAsync(cancellationToken);
 
-        var periodsByDate = periods.ToDictionary(x => (x.Year, x.Month));
-        var publicByPeriod = publicValues.GroupBy(x => x.PeriodId)
-            .ToDictionary(x => x.Key, x => x.ToDictionary(y => y.ProfessionalInstitutionId, y => y.NetTotalClp));
-        var privateByPeriod = privateValues.GroupBy(x => x.PeriodId)
+        var publicColumnByRelation = publicRelations.ToDictionary(
+            relation => relation.ProfessionalInstitutionId,
+            relation => GetPublicColumn(relation.PublicInstitutionId, relation.Name, relation.NormalizedName));
+        var publicValuesByPeriod = publicValues
+            .GroupBy(x => x.PeriodId)
+            .ToDictionary(
+                period => period.Key,
+                period => period
+                    .GroupBy(value => publicColumnByRelation[value.ProfessionalInstitutionId].Key)
+                    .ToDictionary(group => group.Key, group => group.Sum(value => value.NetTotalClp), StringComparer.Ordinal));
+        var privateValuesByPeriod = privateValues
+            .GroupBy(x => x.PeriodId)
             .ToDictionary(x => x.Key, x => x.ToDictionary(y => y.PrivateInstitutionId, y => y.NetTotalClp));
 
+        var publicKeysWithIncome = publicValues
+            .Where(value => value.NetTotalClp > 0)
+            .Select(value => publicColumnByRelation[value.ProfessionalInstitutionId].Key)
+            .ToHashSet(StringComparer.Ordinal);
+        var publicColumns = publicRelations
+            .Select(relation => publicColumnByRelation[relation.ProfessionalInstitutionId])
+            .GroupBy(column => column.Key, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .Where(column => publicKeysWithIncome.Contains(column.Key))
+            .ToList();
+
+        var privateInstitutionIdsWithIncome = privateValues
+            .Where(value => value.NetTotalClp > 0)
+            .Select(value => value.PrivateInstitutionId)
+            .Distinct()
+            .ToArray();
+        List<DashboardInstitutionDto> privateColumns = [];
+        if (privateInstitutionIdsWithIncome.Length > 0)
+        {
+            privateColumns = await _db.PrivateInstitutions.AsNoTracking()
+                .Where(x => privateInstitutionIdsWithIncome.Contains(x.Id))
+                .OrderBy(x => x.Name)
+                .Select(x => new DashboardInstitutionDto($"private:{x.Id:D}", x.Name, "private"))
+                .ToListAsync(cancellationToken);
+        }
+
+        var allColumns = publicColumns.Concat(privateColumns)
+            .OrderBy(x => x.Name, StringComparer.CurrentCulture)
+            .ThenBy(x => x.Type, StringComparer.Ordinal)
+            .ToList();
+        var columns = allColumns;
+        if (institutionKeys is { Count: > 0 })
+        {
+            var requested = institutionKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (requested.Any(key => allColumns.All(column => !string.Equals(column.Key, key, StringComparison.OrdinalIgnoreCase))))
+                throw AppError.NotFound();
+            columns = allColumns.Where(column => requested.Contains(column.Key)).ToList();
+        }
+
+        var periodsByDate = periods.ToDictionary(x => (x.Year, x.Month));
         var rows = new List<DashboardMonthDto>();
         for (var year = (int)fromYear; year <= toYear; year++)
         {
@@ -94,59 +121,47 @@ public sealed partial class IncomeApplicationService
                 IReadOnlyList<DashboardInstitutionValueDto> monthValues;
                 if (!exists)
                 {
-                    monthValues = columns.Select(x => new DashboardInstitutionValueDto(x.Key, null)).ToList();
+                    monthValues = columns.Select(column => new DashboardInstitutionValueDto(column.Key, null)).ToList();
                 }
                 else
                 {
-                    var publicValuesForPeriod = publicByPeriod.GetValueOrDefault(period!.Id);
-                    var privateValuesForPeriod = privateByPeriod.GetValueOrDefault(period!.Id);
+                    var publicForPeriod = publicValuesByPeriod.GetValueOrDefault(period!.Id);
+                    var privateForPeriod = privateValuesByPeriod.GetValueOrDefault(period!.Id);
                     monthValues = columns.Select(column =>
                     {
                         if (column.Type == "public")
-                        {
-                            var relationId = Guid.Parse(column.Key["public:".Length..]);
                             return new DashboardInstitutionValueDto(column.Key,
-                                publicValuesForPeriod is not null && publicValuesForPeriod.TryGetValue(relationId, out var publicNetValue) ? publicNetValue : 0L);
-                        }
+                                publicForPeriod is not null && publicForPeriod.TryGetValue(column.Key, out var publicNet) ? publicNet : 0L);
 
                         var privateId = Guid.Parse(column.Key["private:".Length..]);
                         return new DashboardInstitutionValueDto(column.Key,
-                            privateValuesForPeriod is not null && privateValuesForPeriod.TryGetValue(privateId, out var privateNetValue) ? privateNetValue : 0L);
+                            privateForPeriod is not null && privateForPeriod.TryGetValue(privateId, out var privateNet) ? privateNet : 0L);
                     }).ToList();
                 }
 
-                long? publicGross = exists ? period!.GrossTotalClp : null;
-                long? publicRetention = exists ? period!.RetentionTotalClp : null;
-                long? publicNet = exists ? period!.NetTotalClp : null;
-                long? privateGross = exists ? period!.PrivateGrossTotalClp : null;
-                long? privateRetention = exists ? period!.PrivateRetentionTotalClp : null;
-                long? privateNet = exists ? period!.PrivateNetTotalClp : null;
-                long? privateAttentions = exists ? period!.PrivateAttentionCount : null;
-                decimal? privateMinutes = exists ? period!.PrivateAttentionMinutes : null;
                 var combinedNet = exists
                     ? checked(period!.NetTotalClp + period.PrivateNetTotalClp)
                     : (long?)null;
                 if (combinedNet.HasValue && combinedNet.Value > GestionIngresosHonorarios.Domain.Services.IncomeCalculator.MaxExactInteger)
                     throw new OverflowException("El líquido combinado excede el rango entero exacto del cliente.");
 
-                rows.Add(new DashboardMonthDto(
-                    (short)year,
-                    month,
-                    exists,
-                    combinedNet,
-                    exists ? period!.TotalHours : null,
-                    publicGross,
-                    publicRetention,
-                    publicNet,
-                    privateGross,
-                    privateRetention,
-                    privateNet,
-                    privateAttentions,
-                    privateMinutes,
-                    monthValues));
+                rows.Add(new DashboardMonthDto((short)year, month, exists, combinedNet, monthValues));
             }
         }
 
         return new DashboardDto(ownerId, fromYear, toYear, columns, rows);
     }
+
+    private static DashboardInstitutionDto GetPublicColumn(Guid institutionId, string name, string normalizedName)
+    {
+        var key = new string(normalizedName.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        return key switch
+        {
+            "sapulorenzoarenas" or "lorenzoarenas" => new DashboardInstitutionDto("public:alias:sapu-lorenzo-arenas", "SAPU Lorenzo Arenas", "public"),
+            "sartucapel" or "tucapel" => new DashboardInstitutionDto("public:alias:sar-tucapel", "SAR TUCAPEL", "public"),
+            _ => new DashboardInstitutionDto($"public:{institutionId:D}", name, "public")
+        };
+    }
+
+    private sealed record PublicInstitutionRelation(Guid ProfessionalInstitutionId, Guid PublicInstitutionId, string Name, string NormalizedName);
 }

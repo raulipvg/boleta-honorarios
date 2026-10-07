@@ -99,14 +99,5 @@ public sealed record DashboardMonthDto(
     short Month,
     bool PeriodExists,
     long? TotalNetClp,
-    long? PublicHours,
-    long? PublicGrossClp,
-    long? PublicRetentionClp,
-    long? PublicNetClp,
-    long? PrivateGrossClp,
-    long? PrivateRetentionClp,
-    long? PrivateNetClp,
-    long? PrivateAttentionCount,
-    decimal? PrivateAttentionMinutes,
     IReadOnlyList<DashboardInstitutionValueDto> Institutions);
 public sealed record DashboardDto(Guid ProfessionalId, short FromYear, short ToYear, IReadOnlyList<DashboardInstitutionDto> Institutions, IReadOnlyList<DashboardMonthDto> Months);

@@ -6,7 +6,6 @@ import {
   Button,
   Card,
   Col,
-  DatePicker,
   Descriptions,
   Empty,
   Form,
@@ -34,6 +33,7 @@ import { useAuth } from '../hooks/useAuth'
 import { PermissionCodes, RoleCodes } from '../constants/authorization'
 import { formatClp, formatRate } from '../utils/format'
 import { monthLabel, monthValue } from '../utils/date'
+import { MonthSelector } from '../components/layout/MonthSelector'
 import type { PrivateLiquidation, PrivateLiquidationPreview, ProfessionalSummary } from '../types/api'
 
 const MAX_PDF_BYTES = 1_048_576
@@ -336,13 +336,9 @@ export function PrivateLiquidationsPage() {
       <Card className="dashboard-table-card" variant="borderless">
         <div className="section-card-heading">
           <div><Typography.Text className="eyebrow">{monthLabel(year, month).toUpperCase()}</Typography.Text><Typography.Title level={3}>Liquidaciones importadas</Typography.Title></div>
-          <DatePicker
-            picker="month"
-            allowClear={false}
+          <MonthSelector
             value={selectedMonth}
-            onChange={value => { if (value) { setLoading(true); setPreview(null); setSelectedMonth(value.date(1)) } }}
-            format="MMMM YYYY"
-            inputReadOnly
+            onChange={value => { setLoading(true); setPreview(null); setSelectedMonth(value.date(1)) }}
           />
         </div>
         {loading ? <Skeleton active paragraph={{ rows: 4 }} /> : liquidations.length === 0 ? <Empty description="No hay liquidaciones privadas para este mes." /> : <>

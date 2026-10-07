@@ -113,33 +113,50 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
             () => service.DeleteAsync(administrator, first.Id, CancellationToken.None));
         Assert.Equal(403, administratorDelete.StatusCode);
 
-        var publicInstitution = new PublicInstitution("Hospital público de integración");
-        db.PublicInstitutions.Add(publicInstitution);
+        var sapu = new PublicInstitution("SAPU Lorenzo Arenas");
+        var lorenzoAlias = new PublicInstitution("Lorenzo Arenas");
+        var sar = new PublicInstitution("Tucapel");
+        var noIncome = new PublicInstitution("Hospital sin ingresos");
+        db.PublicInstitutions.AddRange(sapu, lorenzoAlias, sar, noIncome);
         await db.SaveChangesAsync();
-        var publicRelation = new ProfessionalInstitution(ProfessionalId, publicInstitution.Id);
-        db.ProfessionalInstitutions.Add(publicRelation);
+        var sapuRelation = new ProfessionalInstitution(ProfessionalId, sapu.Id);
+        var lorenzoRelation = new ProfessionalInstitution(ProfessionalId, lorenzoAlias.Id);
+        var sarRelation = new ProfessionalInstitution(ProfessionalId, sar.Id);
+        var noIncomeRelation = new ProfessionalInstitution(ProfessionalId, noIncome.Id);
+        db.ProfessionalInstitutions.AddRange(sapuRelation, lorenzoRelation, sarRelation, noIncomeRelation);
         await db.SaveChangesAsync();
-        db.AnnualHourlyRates.Add(new AnnualHourlyRate(publicRelation.Id, 2026, 1, 1_000));
+        db.AnnualHourlyRates.AddRange(
+            new AnnualHourlyRate(sapuRelation.Id, 2026, 1, 1_000),
+            new AnnualHourlyRate(lorenzoRelation.Id, 2026, 1, 1_000),
+            new AnnualHourlyRate(sarRelation.Id, 2026, 1, 2_000),
+            new AnnualHourlyRate(noIncomeRelation.Id, 2026, 1, 500));
         await db.SaveChangesAsync();
 
         var income = new IncomeApplicationService(db);
-        await income.AddInstitutionToPeriodAsync(actor, 2026, 9, publicRelation.Id, CancellationToken.None);
-        await income.AddHourRecordAsync(actor, 2026, 9, publicRelation.Id, 1, CancellationToken.None);
+        foreach (var relationId in new[] { sapuRelation.Id, lorenzoRelation.Id, sarRelation.Id })
+        {
+            await income.AddInstitutionToPeriodAsync(actor, 2026, 9, relationId, CancellationToken.None);
+            await income.AddHourRecordAsync(actor, 2026, 9, relationId, 1, CancellationToken.None);
+        }
 
         var dashboard = await income.GetDashboardAsync(actor, null, 2026, 2026, null, CancellationToken.None);
         var dashboardMonth = Assert.Single(dashboard.Months, x => x.Month == 9);
-        Assert.Equal(586_001, dashboardMonth.TotalNetClp);
-        Assert.Equal(847, dashboardMonth.PublicNetClp);
-        Assert.Equal(585_154, dashboardMonth.PrivateNetClp);
-        Assert.Equal(47, dashboardMonth.PrivateAttentionCount);
-        Assert.Equal(2, dashboard.Institutions.Count);
+        Assert.Equal(588_543, dashboardMonth.TotalNetClp);
+        Assert.Equal(3, dashboard.Institutions.Count);
+        Assert.Contains(dashboard.Institutions, x => x.Type == "public" && x.Name == "SAPU Lorenzo Arenas");
+        Assert.Contains(dashboard.Institutions, x => x.Type == "public" && x.Name == "SAR TUCAPEL");
         Assert.Contains(dashboard.Institutions, x => x.Type == "private" && x.Name == "Sanatorio Alemán");
-
+        Assert.DoesNotContain(dashboard.Institutions, x => x.Name == "Hospital sin ingresos");
         var sanatorioColumn = dashboard.Institutions.Single(x => x.Type == "private");
+        var institutionValues = dashboardMonth.Institutions.ToDictionary(x => x.InstitutionKey, x => x.NetTotalClp);
+        Assert.Equal(1_694, institutionValues["public:alias:sapu-lorenzo-arenas"]);
+        Assert.Equal(1_695, institutionValues["public:alias:sar-tucapel"]);
+        Assert.Equal(585_154, institutionValues[sanatorioColumn.Key]);
+
         var filteredDashboard = await income.GetDashboardAsync(actor, null, 2026, 2026,
             [sanatorioColumn.Key], CancellationToken.None);
         Assert.Equal(sanatorioColumn.Key, Assert.Single(filteredDashboard.Institutions).Key);
-        Assert.Equal(586_001, Assert.Single(filteredDashboard.Months, x => x.Month == 9).TotalNetClp);
+        Assert.Equal(588_543, Assert.Single(filteredDashboard.Months, x => x.Month == 9).TotalNetClp);
 
         var duplicate = await Assert.ThrowsAsync<AppError>(() =>
             service.PreviewAsync(actor, new MemoryStream(firstFile), firstFile.Length, "first.pdf", 12m, CancellationToken.None));
@@ -166,7 +183,7 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         Assert.Equal(2, await db.PrivateLiquidations.CountAsync());
         Assert.Equal(690_448, period.PrivateGrossTotalClp);
         Assert.Equal(47, period.PrivateAttentionCount);
-        Assert.Equal(847, period.NetTotalClp);
+        Assert.Equal(3_389, period.NetTotalClp);
     }
 
     [Fact]

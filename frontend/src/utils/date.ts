@@ -4,7 +4,8 @@ import 'dayjs/locale/es'
 dayjs.locale('es')
 
 export function monthLabel(year: number, month: number): string {
-  return dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY')
+  const label = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY')
+  return `${label.charAt(0).toLocaleUpperCase('es-CL')}${label.slice(1)}`
 }
 
 export function monthValue(value: Dayjs): { year: number; month: number } {

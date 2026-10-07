@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Card, Empty, Select, Skeleton, Space, Table, Tag, Typography, type TableColumnsType } from 'antd'
-import { Link } from 'react-router-dom'
 import { dashboardService } from '../services/dashboard/dashboardService'
 import { professionalService } from '../services/professionals/professionalService'
 import { getApiErrorMessage } from '../services/apiClient'
@@ -65,41 +64,21 @@ export function DashboardPage() {
         render: value => <Typography.Text strong>{value}</Typography.Text>,
       },
       { title: 'Mes', dataIndex: 'month', key: 'month', width: 132, fixed: 'left', render: value => monthName(value) },
-      {
-        title: 'Ingresos públicos',
-        children: [
-          { title: 'Horas', dataIndex: 'publicHours', key: 'public-hours', width: 105, render: value => value === null ? '—' : `${value} h` },
-          { title: 'Bruto', dataIndex: 'publicGrossClp', key: 'public-gross', width: 145, render: renderClp },
-          { title: 'Retención', dataIndex: 'publicRetentionClp', key: 'public-retention', width: 145, render: renderClp },
-          { title: 'Líquido est.', dataIndex: 'publicNetClp', key: 'public-net', width: 145, render: renderClp },
-        ],
-      },
-      {
-        title: 'Ingresos privados',
-        children: [
-          { title: 'Bruto', dataIndex: 'privateGrossClp', key: 'private-gross', width: 145, render: renderClp },
-          { title: 'Retención', dataIndex: 'privateRetentionClp', key: 'private-retention', width: 145, render: renderClp },
-          { title: 'Líquido', dataIndex: 'privateNetClp', key: 'private-net', width: 145, render: renderClp },
-          { title: 'Atenciones', dataIndex: 'privateAttentionCount', key: 'private-attentions', width: 115, render: value => value === null ? '—' : value },
-          { title: 'Minutos', dataIndex: 'privateAttentionMinutes', key: 'private-minutes', width: 115, render: value => value === null ? '—' : formatMinutes(value) },
-        ],
-      },
     ]
     const institutionColumns: TableColumnsType<DashboardMonth> = visibleInstitutions.map(institution => ({
       title: <Space size={4} wrap>
-        <span>{institution.name}</span>
         <Tag color={institution.type === 'private' ? 'purple' : 'blue'}>{institution.type === 'private' ? 'Privada' : 'Pública'}</Tag>
+        <span>{institution.name}</span>
       </Space>,
       key: institution.key,
       width: 205,
       render: (_, row) => {
         const amount = row.institutions.find(item => item.institutionKey === institution.key)?.netTotalClp ?? null
         if (amount === null) return <span className="no-data-cell">—</span>
-        return <div className="dashboard-amount-cell">
-          <strong>{formatClp(amount)}</strong>
-          <span>{formatParticipation(amount, row.totalNetClp)}</span>
-          {institution.type === 'private' && (row.privateAttentionCount ?? 0) > 0 && <Link to={privateLiquidationsUrl(row, isAdmin ? professionalId : undefined)}>Ver PDF</Link>}
-        </div>
+        return <Space className="dashboard-amount-cell" align="center" size={8}>
+          <Typography.Text type="secondary">{formatParticipation(amount, row.totalNetClp)}</Typography.Text>
+          <Typography.Text strong>{formatClp(amount)}</Typography.Text>
+        </Space>
       },
     }))
     return [...base, ...institutionColumns, {
@@ -111,7 +90,7 @@ export function DashboardPage() {
         ? <span className="no-data-cell">Sin período</span>
         : <Typography.Text strong className="table-total">{formatClp(row.totalNetClp)}</Typography.Text>,
     }]
-  }, [isAdmin, professionalId, visibleInstitutions, visibleMonths, visibleMonthsPerYear])
+  }, [visibleInstitutions, visibleMonths, visibleMonthsPerYear])
 
   const yearOptions = Array.from({ length: 50 }, (_, index) => currentYear + 1 - index)
 
@@ -120,7 +99,7 @@ export function DashboardPage() {
       <div>
         <Typography.Text className="eyebrow">LECTURA HISTÓRICA</Typography.Text>
         <Typography.Title level={1}>La evolución de un vistazo.</Typography.Title>
-        <Typography.Paragraph>Compara los líquidos públicos y privados y sigue el total combinado mes a mes.</Typography.Paragraph>
+        <Typography.Paragraph>Compara el líquido por institución y sigue el total combinado mes a mes.</Typography.Paragraph>
       </div>
       <Tag className="dashboard-unit-tag">CLP · importes netos calculados</Tag>
     </section>
@@ -181,20 +160,6 @@ export function DashboardPage() {
       </Card>
     </> : null}
   </div>
-}
-
-function renderClp(value: number | null): string {
-  return value === null ? '—' : formatClp(value)
-}
-
-function formatMinutes(value: number): string {
-  return `${new Intl.NumberFormat('es-CL', { maximumFractionDigits: 6 }).format(value)} min`
-}
-
-function privateLiquidationsUrl(row: DashboardMonth, professionalId?: string): string {
-  const query = new URLSearchParams({ year: String(row.year), month: String(row.month) })
-  if (professionalId) query.set('professionalId', professionalId)
-  return `/private-liquidations?${query.toString()}`
 }
 
 function monthName(month: number): string {
