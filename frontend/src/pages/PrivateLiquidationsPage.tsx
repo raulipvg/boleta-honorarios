@@ -13,6 +13,7 @@ import {
   Popconfirm,
   Select,
   Skeleton,
+  Spin,
   Space,
   Table,
   Tag,
@@ -22,7 +23,7 @@ import {
   type TableColumnsType,
   type UploadFile,
 } from 'antd'
-import { DeleteOutlined, DownloadOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, EyeOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
 import { privateLiquidationService } from '../services/private-liquidations/privateLiquidationService'
 import { professionalService } from '../services/professionals/professionalService'
@@ -63,6 +64,10 @@ export function PrivateLiquidationsPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [previewingId, setPreviewingId] = useState<string | null>(null)
+  const [previewLiquidation, setPreviewLiquidation] = useState<PrivateLiquidation | null>(null)
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { year, month } = monthValue(selectedMonth)
 
@@ -93,6 +98,11 @@ export function PrivateLiquidationsPage() {
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [loadLiquidations])
+
+  useEffect(() => {
+    if (!previewPdfUrl) return
+    return () => URL.revokeObjectURL(previewPdfUrl)
+  }, [previewPdfUrl])
 
   const resetImportDraft = () => {
     setPreview(null)
@@ -186,6 +196,27 @@ export function PrivateLiquidationsPage() {
     }
   }, [])
 
+  const previewFile = useCallback(async (liquidation: PrivateLiquidation) => {
+    if (previewingId !== null) return
+    setPreviewingId(liquidation.id)
+    try {
+      const blob = await privateLiquidationService.download(liquidation.id)
+      setPreviewLiquidation(liquidation)
+      setPreviewPdfUrl(URL.createObjectURL(blob))
+      setPreviewModalOpen(true)
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'No se pudo abrir la vista previa del PDF.'))
+    } finally {
+      setPreviewingId(null)
+    }
+  }, [previewingId])
+
+  const closePreviewModal = () => {
+    setPreviewModalOpen(false)
+    setPreviewLiquidation(null)
+    setPreviewPdfUrl(null)
+  }
+
   const deleteLiquidation = useCallback(async (liquidation: PrivateLiquidation) => {
     try {
       await privateLiquidationService.delete(liquidation.id)
@@ -200,7 +231,7 @@ export function PrivateLiquidationsPage() {
     { title: 'Quincena', dataIndex: 'fortnight', key: 'fortnight', width: 100, render: value => `${value}.ª` },
     { title: 'Liquidación', dataIndex: 'liquidationNumber', key: 'number', width: 125 },
     { title: 'Fecha', dataIndex: 'liquidationDate', key: 'date', width: 115, render: value => dayjs(value).format('DD-MM-YYYY') },
-    { title: 'Entidad pagadora', key: 'payer', width: 250, render: (_, row) => <Space direction="vertical" size={0}><span>{row.payerLegalName}</span><Typography.Text type="secondary">RUT {row.payerRut}</Typography.Text></Space> },
+    { title: 'Entidad pagadora', key: 'payer', width: 250, render: (_, row) => <Space orientation="vertical" size={0}><span>{row.payerLegalName}</span><Typography.Text type="secondary">RUT {row.payerRut}</Typography.Text></Space> },
     { title: 'RUT cobrador', dataIndex: 'collectorRut', key: 'collector-rut', width: 125 },
     { title: 'Servicio', dataIndex: 'paymentService', key: 'service', width: 170 },
     { title: 'Ejecutor', dataIndex: 'executorName', key: 'executor', width: 190 },
@@ -212,17 +243,18 @@ export function PrivateLiquidationsPage() {
     { title: 'Atenciones', dataIndex: 'attentionCount', key: 'attentions', align: 'right', width: 105 },
     { title: 'Cierre PDF', dataIndex: 'reportedAttentionCount', key: 'reported-attentions', align: 'right', width: 110, render: value => value ?? '—' },
     { title: 'Min/atención', dataIndex: 'minutesPerAttention', key: 'minutes-per-attention', align: 'right', width: 125, render: value => `${formatMinutes(value)} min` },
-    { title: 'Minutos totales', dataIndex: 'totalAttentionMinutes', key: 'minutes-total', align: 'right', width: 135, render: value => `${formatMinutes(value)} min` },
+    { title: 'Hrs totales', dataIndex: 'totalAttentionMinutes', key: 'hours-total', align: 'right', width: 135, render: value => `${formatHoursFromMinutes(value)} h` },
     {
-      title: 'Archivo', key: 'actions', fixed: 'right', width: 110,
+      title: 'Acciones', key: 'actions', fixed: 'right', width: 145,
       render: (_, row) => <Space>
+        <Tooltip title="Ver PDF"><Button type="text" icon={<EyeOutlined />} loading={previewingId === row.id} disabled={previewingId !== null && previewingId !== row.id} onClick={() => void previewFile(row)} aria-label="Ver PDF" /></Tooltip>
         <Tooltip title="Descargar PDF"><Button type="text" icon={<DownloadOutlined />} loading={downloadingId === row.id} onClick={() => void downloadFile(row)} aria-label="Descargar PDF" /></Tooltip>
         {canDelete && <Popconfirm title="Eliminar esta liquidación y sus totales" okText="Eliminar" cancelText="Cancelar" onConfirm={() => void deleteLiquidation(row)}>
           <Tooltip title="Eliminar liquidación"><Button type="text" danger icon={<DeleteOutlined />} aria-label="Eliminar liquidación" /></Tooltip>
         </Popconfirm>}
       </Space>,
     },
-  ], [canDelete, deleteLiquidation, downloadFile, downloadingId])
+  ], [canDelete, deleteLiquidation, downloadFile, downloadingId, previewFile, previewingId])
 
   const privateGross = liquidations.reduce((total, item) => total + item.grossTotalClp, 0)
   const privateRetention = liquidations.reduce((total, item) => total + item.retentionTotalClp, 0)
@@ -280,13 +312,6 @@ export function PrivateLiquidationsPage() {
           />
         </div>
         {loading ? <Skeleton active paragraph={{ rows: 4 }} /> : liquidations.length === 0 ? <Empty description="No hay liquidaciones privadas para este mes." /> : <>
-          <Space wrap className="month-summary-metrics">
-            <Tag color="purple">Bruto privado: {formatClp(privateGross)}</Tag>
-            <Tag color="orange">Retención privada: {formatClp(privateRetention)}</Tag>
-            <Tag color="green">Líquido privado: {formatClp(privateNet)}</Tag>
-            <Tag>{attentionCount} atenciones</Tag>
-            <Tag>{formatMinutes(totalAttentionMinutes)} minutos</Tag>
-          </Space>
           <Table<PrivateLiquidation>
             rowKey="id"
             columns={columns}
@@ -294,10 +319,44 @@ export function PrivateLiquidationsPage() {
             pagination={{ pageSize: 10, showSizeChanger: false }}
             scroll={{ x: 'max-content' }}
             size="middle"
+            summary={() => <Table.Summary fixed="bottom">
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0} colSpan={7} align="right">
+                  <Typography.Text strong>Totales del mes</Typography.Text>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={7} align="right">—</Table.Summary.Cell>
+                <Table.Summary.Cell index={8} align="right"><Typography.Text strong>{formatClp(privateGross)}</Typography.Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={9} align="right">—</Table.Summary.Cell>
+                <Table.Summary.Cell index={10} align="right"><Typography.Text strong>{formatClp(privateRetention)}</Typography.Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={11} align="right"><Typography.Text strong>{formatClp(privateNet)}</Typography.Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={12} align="right"><Typography.Text strong>{attentionCount}</Typography.Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={13} align="right">—</Table.Summary.Cell>
+                <Table.Summary.Cell index={14} align="right">—</Table.Summary.Cell>
+                <Table.Summary.Cell index={15} align="right"><Typography.Text strong>{formatHoursFromMinutes(totalAttentionMinutes)} h</Typography.Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={16} align="right">—</Table.Summary.Cell>
+              </Table.Summary.Row>
+            </Table.Summary>}
           />
         </>}
       </Card>
     </>}
+
+    <Modal
+      title={previewLiquidation ? `Vista previa · Liquidación ${previewLiquidation.liquidationNumber}` : 'Vista previa PDF'}
+      open={previewModalOpen}
+      onCancel={closePreviewModal}
+      footer={null}
+      destroyOnHidden
+      width={960}
+    >
+      {previewPdfUrl
+        ? <iframe
+          title={`Vista previa de la liquidación ${previewLiquidation?.liquidationNumber ?? ''}`}
+          src={previewPdfUrl}
+          style={{ width: '100%', height: '75vh', border: 0 }}
+        />
+        : <Spin />}
+    </Modal>
 
     {canCreate && <Modal
       title={<Space><FilePdfOutlined /> Nueva liquidación privada</Space>}
@@ -310,7 +369,7 @@ export function PrivateLiquidationsPage() {
       okButtonProps={{ disabled: busy || (preview === null && (!profileRut || !selectedFile || minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1)) }}
       cancelButtonProps={{ disabled: busy }}
       closable={!busy}
-      maskClosable={!busy}
+      mask={{ closable: !busy }}
       keyboard={!busy}
       destroyOnHidden
       width={1200}
@@ -403,4 +462,8 @@ export function PrivateLiquidationsPage() {
 
 function formatMinutes(value: number): string {
   return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 }).format(value)
+}
+
+function formatHoursFromMinutes(minutes: number): string {
+  return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 }).format(minutes / 60)
 }

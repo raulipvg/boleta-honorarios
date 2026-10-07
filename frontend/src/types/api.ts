@@ -83,11 +83,6 @@ export interface MonthlyWorkspace {
   grossTotalClp: number
   retentionTotalClp: number
   netTotalClp: number
-  privateGrossTotalClp: number
-  privateRetentionTotalClp: number
-  privateNetTotalClp: number
-  privateAttentionCount: number
-  privateAttentionMinutes: number
   version: number
   institutions: PeriodInstitution[]
 }

@@ -34,11 +34,6 @@ public sealed record MonthlyWorkspaceDto(
     long GrossTotalClp,
     long RetentionTotalClp,
     long NetTotalClp,
-    long PrivateGrossTotalClp,
-    long PrivateRetentionTotalClp,
-    long PrivateNetTotalClp,
-    long PrivateAttentionCount,
-    long PrivateAttentionMinutes,
     long Version,
     IReadOnlyList<PeriodInstitutionDto> Institutions);
 public sealed record PrivateLiquidationPreviewDto(

@@ -21,7 +21,7 @@ public sealed partial class IncomeApplicationService
             .SingleOrDefaultAsync(x => x.ProfessionalId == ownerId && x.Year == year && x.Month == month, cancellationToken);
         if (period is null)
             return new MonthlyWorkspaceDto(null, ownerId, year, month, false, null, 0, 0, 0, 0,
-                0, 0, 0, 0, 0L, 0, Array.Empty<PeriodInstitutionDto>());
+                0L, Array.Empty<PeriodInstitutionDto>());
         return await BuildWorkspaceAsync(period, cancellationToken);
     }
 
@@ -314,8 +314,7 @@ public sealed partial class IncomeApplicationService
         return new MonthlyWorkspaceDto(
             period.Id, period.ProfessionalId, period.Year, period.Month, true, period.AppliedRetentionPercentage,
             period.TotalHours, period.GrossTotalClp, period.RetentionTotalClp, period.NetTotalClp,
-            period.PrivateGrossTotalClp, period.PrivateRetentionTotalClp, period.PrivateNetTotalClp,
-            period.PrivateAttentionCount, period.PrivateAttentionMinutes, period.Version, dtoInstitutions);
+            period.Version, dtoInstitutions);
     }
 
     private static void ValidatePeriod(short year, short month)
