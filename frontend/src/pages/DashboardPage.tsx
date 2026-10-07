@@ -7,6 +7,7 @@ import { formatClp, formatParticipation } from '../utils/format'
 import { useAuth } from '../hooks/useAuth'
 import { RoleCodes } from '../constants/authorization'
 import { IncomeLineChart } from '../components/dashboard/IncomeLineChart'
+import { dashboardColorTint, institutionSeriesColor, TOTAL_MONTHLY_COLOR } from '../components/dashboard/seriesColors'
 import type { DashboardData, DashboardMonth, ProfessionalSummary } from '../types/api'
 
 export function DashboardPage() {
@@ -69,30 +70,51 @@ export function DashboardPage() {
       },
       { title: 'Mes', dataIndex: 'month', key: 'month', width: 132, fixed: 'left', render: value => monthName(value) },
     ]
-    const institutionColumns: TableColumnsType<DashboardMonth> = tableInstitutions.map(institution => ({
-      title: <Space size={4} wrap>
-        <Tag color={institution.type === 'private' ? 'purple' : 'blue'}>{institution.type === 'private' ? 'Privada' : 'Pública'}</Tag>
-        <span>{institution.name}</span>
-      </Space>,
-      key: institution.key,
-      width: 205,
-      render: (_, row) => {
-        const amount = row.institutions.find(item => item.institutionKey === institution.key)?.netTotalClp ?? null
-        if (amount === null) return <span className="no-data-cell">—</span>
-        return <Space className="dashboard-amount-cell" align="center" size={8}>
-          <Typography.Text type="secondary">{formatParticipation(amount, row.totalNetClp)}</Typography.Text>
-          <Typography.Text strong>{formatClp(amount)}</Typography.Text>
-        </Space>
-      },
-    }))
+    const institutionColumns: TableColumnsType<DashboardMonth> = tableInstitutions.map(institution => {
+      const color = institutionSeriesColor(institution)
+      return {
+        title: <Space size={4} wrap>
+          <i className="dashboard-series-color-mark" style={{ backgroundColor: color }} aria-hidden="true" />
+          <Tag color={institution.type === 'private' ? 'purple' : 'blue'}>{institution.type === 'private' ? 'Privada' : 'Pública'}</Tag>
+          <span>{institution.name}</span>
+        </Space>,
+        key: institution.key,
+        width: 205,
+        onHeaderCell: () => ({
+          style: {
+            borderTop: `3px solid ${color}`,
+            backgroundColor: dashboardColorTint(color, 9),
+          },
+        }),
+        onCell: () => ({ style: { backgroundColor: dashboardColorTint(color, 5) } }),
+        render: (_, row) => {
+          const amount = row.institutions.find(item => item.institutionKey === institution.key)?.netTotalClp ?? null
+          if (amount === null) return <span className="no-data-cell">—</span>
+          return <Space className="dashboard-amount-cell" align="center" size={8}>
+            <Typography.Text type="secondary">{formatParticipation(amount, row.totalNetClp)}</Typography.Text>
+            <Typography.Text strong style={{ color }}>{formatClp(amount)}</Typography.Text>
+          </Space>
+        },
+      }
+    })
     return [...base, ...institutionColumns, {
-      title: 'Líquido combinado',
+      title: <Space size={6}>
+        <i className="dashboard-series-color-mark" style={{ backgroundColor: TOTAL_MONTHLY_COLOR }} aria-hidden="true" />
+        <span>Total Mensual</span>
+      </Space>,
       key: 'total',
       width: 175,
       fixed: 'right',
+      onHeaderCell: () => ({
+        style: {
+          borderTop: `3px solid ${TOTAL_MONTHLY_COLOR}`,
+          backgroundColor: dashboardColorTint(TOTAL_MONTHLY_COLOR, 9),
+        },
+      }),
+      onCell: () => ({ style: { backgroundColor: dashboardColorTint(TOTAL_MONTHLY_COLOR, 5) } }),
       render: (_, row) => row.totalNetClp === null
         ? <span className="no-data-cell">Sin período</span>
-        : <Typography.Text strong className="table-total">{formatClp(row.totalNetClp)}</Typography.Text>,
+        : <Typography.Text strong style={{ color: TOTAL_MONTHLY_COLOR }}>{formatClp(row.totalNetClp)}</Typography.Text>,
     }]
   }, [tableInstitutions, visibleMonths, visibleMonthsPerYear])
 
