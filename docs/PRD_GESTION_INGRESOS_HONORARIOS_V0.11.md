@@ -60,6 +60,7 @@ Las autorizaciones se validan siempre en backend.
 7. El parser inicial usa PdfPig para extraer texto del PDF. No se incluye OCR en esta versión.
 8. Cada liquidación conserva el PDF original en un volumen persistente de Docker montado en el contenedor del backend; la base de datos conserva su referencia, hash y datos de importación.
 9. El profesional propietario y los administradores pueden descargar el PDF mediante una operación autorizada. Solo el profesional propietario puede eliminarlo.
+10. El archivo PDF cargado no puede superar 1 MB (1.048.576 bytes).
 
 Esta versión implementa únicamente Sanatorio Alemán. Los RUT pagadores reconocidos para esta institución son `76389986-1` y `88611600-4`. Las reglas de nuevas instituciones privadas se agregarán posteriormente con sus propios formatos y reglas de negocio.
 
@@ -142,10 +143,11 @@ Líquido privado del PDF = Bruto privado del PDF − Retención privada del PDF
 ### 6.3 Atenciones y tiempo
 
 - Cantidad de atenciones por PDF = número de filas de atención leídas.
-- En la carga, el profesional ingresa los minutos de una atención para ese PDF.
-- Se asume que ese valor se aplica a todas las atenciones de ese documento.
+- En la carga, el profesional ingresa los minutos de una atención para ese PDF. El valor debe ser mayor que cero; no se establece un máximo funcional.
+- Ese valor se aplica a todas las atenciones del PDF, sea cual sea el servicio indicado en la plantilla.
 - Minutos totales del PDF = cantidad de atenciones × minutos por atención.
 - El resumen mensual suma las atenciones y minutos de todos los documentos del mes.
+- No se calcula ni presenta un promedio mensual de duración.
 
 La interfaz puede describir la métrica como **“Atenciones”** o **“Pacientes atendidos según filas de liquidación”**, dejando claro que no representa pacientes únicos.
 
@@ -172,7 +174,7 @@ El dashboard también mantiene el desglose de cada modalidad. No se sobrescriben
 
 ### 7.1 Datos identificados
 
-El importador procesa la plantilla “Liquidación por Participaciones” y obtiene los siguientes datos por PDF:
+El importador procesa la plantilla “Liquidación por Participaciones” y obtiene los siguientes datos por PDF. La misma regla se aplica a todos los servicios incluidos en esta plantilla; no se aplican fórmulas distintas según el nombre de la prestación o servicio.
 
 - Entidad pagadora, razón social y RUT.
 - Cobrador y su RUT.
@@ -183,7 +185,9 @@ El importador procesa la plantilla “Liquidación por Participaciones” y obti
 - Cantidad de atenciones contadas desde las filas identificadas por un N.º de atención válido.
 - Cantidad de cancelaciones indicada en el cierre, si aparece, para contrastarla con el conteo de filas.
 
-El profesional ingresa los minutos por atención durante la carga. Este valor se aplica uniformemente a todas las atenciones del PDF.
+El profesional ingresa los minutos por atención durante la carga. El valor debe ser mayor que cero y se aplica uniformemente a todas las atenciones del PDF.
+
+El tamaño máximo del archivo cargado es 1 MB (1.048.576 bytes). Los PDF que superen ese límite se rechazan antes de procesarse.
 
 PdfPig extrae el texto y sus posiciones. La lógica de aplicación interpreta la estructura y las columnas del formato conocido, incluyendo las filas que continúan en otra página. Para calcular las atenciones no se cuentan líneas físicas de texto: se cuentan los registros que contienen un identificador N.º de atención válido. Para validar el bruto se suman los valores `Valor Pago` leídos de esas filas.
 
@@ -294,6 +298,8 @@ Sanatorio Alemán aparece como **una sola columna** y su líquido mensual suma l
 
 Cada columna por institución muestra el líquido y su participación sobre el líquido combinado mensual: `líquido de la institución / líquido combinado del mes × 100`. El porcentaje se redondea al entero más cercano, con mitades alejándose de cero; los porcentajes se redondean por separado y pueden no sumar visualmente 100 %. Si el total líquido combinado es cero, la participación se presenta como `—`. Las métricas de pacientes/atenciones y minutos se muestran solo para instituciones privadas; no se inventan valores equivalentes para instituciones públicas.
 
+Para instituciones privadas se muestran las atenciones y los minutos por PDF y los minutos totales del mes. No se presenta una duración promedio mensual.
+
 El usuario puede consultar los documentos privados que componen el total del mes, con su quincena, pagador y valores calculados.
 
 ### Gráfico
@@ -344,6 +350,10 @@ Un mes sin información de ninguna modalidad aparece como un período sin datos.
 - **RF-21:** Permitir que solo el profesional propietario elimine su liquidación; borrar el archivo original y los datos asociados y actualizar los agregados mensuales transaccionalmente.
 - **RF-22:** Permitir descargar el PDF solo al profesional propietario y a administradores autorizados, mediante validación de rol y propiedad en backend.
 - **RF-23:** Mostrar Sanatorio Alemán como una institución/columna, sumando sus pagadores; mostrar atenciones y minutos solo para instituciones privadas.
+- **RF-24:** Rechazar archivos PDF cuyo tamaño supere 1 MB (1.048.576 bytes).
+- **RF-25:** Aceptar para los minutos por atención cualquier valor numérico mayor que cero y aplicarlo a todas las atenciones del PDF.
+- **RF-26:** Aplicar la misma regla de lectura y cálculo a todos los servicios presentes en la plantilla de Sanatorio Alemán.
+- **RF-27:** Mostrar atenciones y minutos por PDF y como total mensual, sin calcular ni mostrar duración promedio.
 
 ## 13. Criterios de aceptación
 
@@ -432,6 +442,18 @@ La descarga está autorizada únicamente para el profesional propietario y los a
 
 Las liquidaciones de ambos RUT pagadores de Sanatorio Alemán se suman en una sola columna mensual de líquido. El detalle permite distinguirlas por PDF y entidad pagadora. Las métricas de atenciones y minutos no se aplican a columnas públicas.
 
+### CA-19 — Validar minutos por atención
+
+El sistema rechaza minutos iguales o menores que cero y acepta cualquier valor mayor que cero. El valor se aplica a todas las atenciones del PDF. El dashboard muestra atenciones y minutos totales, no duración promedio.
+
+### CA-20 — Limitar tamaño del PDF
+
+El sistema acepta archivos de hasta 1 MB (1.048.576 bytes) y rechaza archivos que superen ese tamaño antes de ejecutar PdfPig.
+
+### CA-21 — Tratar uniformemente los servicios de la plantilla
+
+Todas las filas de atención válidas de los servicios incluidos en la plantilla se cuentan y se consideran en la suma de `Valor Pago`. El cálculo de retención y líquido se aplica al total de la liquidación sin reglas adicionales por tipo de servicio.
+
 ## 14. Reglas de negocio
 
 - **RN-01:** El cálculo público se mantiene basado en horas enteras y tarifas horarias por institución/año.
@@ -461,12 +483,13 @@ Las liquidaciones de ambos RUT pagadores de Sanatorio Alemán se suman en una so
 - **RN-25:** El profesional propietario y los administradores autorizados pueden descargar el PDF mediante una ruta protegida en backend.
 - **RN-26:** Atenciones y duración son métricas privadas; no se combinan ni se equiparan con las horas registradas para instituciones públicas.
 - **RN-27:** El dashboard muestra una sola columna Sanatorio Alemán, sumando sus entidades pagadoras; el detalle mantiene cada liquidación separada.
+- **RN-28:** Los minutos ingresados por atención deben ser mayores que cero y se aplican por igual a todas las atenciones del PDF.
+- **RN-29:** La primera regla de Sanatorio Alemán se aplica uniformemente a todos los servicios de su plantilla.
+- **RN-30:** Los PDF cargados no pueden superar 1 MB (1.048.576 bytes).
+- **RN-31:** El dashboard no calcula ni presenta el promedio mensual de duración de atención.
 
 ## 15. Decisiones pendientes
 
 - Definir quién resuelve la revisión de un RUT pagador desconocido y cómo se registra su asociación con Sanatorio Alemán antes de confirmar la liquidación.
-- Definir si el dashboard privado muestra duración promedio mensual de atención además de atenciones, minutos por PDF y minutos totales mensuales.
-- Definir validaciones técnicas de los minutos ingresados (entero/rango) y límites de tamaño o páginas del archivo PDF.
-- Confirmar si el parser inicial de Sanatorio Alemán acepta todos los servicios que puedan aparecer en la plantilla o solo los servicios médicos mostrados en los ejemplos.
 
 Las reglas de otras instituciones privadas y el soporte OCR para documentos escaneados son futuras ampliaciones, fuera de esta versión.
