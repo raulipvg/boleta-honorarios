@@ -11,7 +11,7 @@ export function AppShell() {
   const location = useLocation()
   const items = useMemo(() => {
     const entries = [
-      { key: '/dashboard', label: 'Dashboard', permission: PermissionCodes.dashboardRead },
+      { key: '/dashboard', label: 'Resumen', permission: PermissionCodes.dashboardRead },
       { key: '/month', label: 'Trabajo por Horas', permission: PermissionCodes.periodsRead },
       { key: '/private-liquidations', label: 'Trabajo por Paciente', permission: PermissionCodes.privateLiquidationsRead },
       { key: '/institutions', label: 'Instituciones y Tarifas por Hora', permission: PermissionCodes.relationshipsRead },
