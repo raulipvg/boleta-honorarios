@@ -349,6 +349,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         var serviciosPayerId = Guid.Parse("8d1040c1-3da3-42fd-842a-c87eba660002");
         var clinicaPayerId = Guid.Parse("8d1040c1-3da3-42fd-842a-c87eba660003");
         var participationsRuleId = Guid.Parse("8d1040c1-3da3-42fd-842a-c87eba660004");
+        var centroCebienId = Guid.Parse("8d1040c1-3da3-42fd-842a-c87eba660005");
+        var cebienPayerId = Guid.Parse("8d1040c1-3da3-42fd-842a-c87eba660006");
+        var cebienEmailRuleId = Guid.Parse("8d1040c1-3da3-42fd-842a-c87eba660007");
         var seedDate = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
         builder.Entity<PrivateInstitution>(entity =>
@@ -362,14 +365,23 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
             entity.HasIndex(x => x.Name).IsUnique();
-            entity.HasData(new
-            {
-                Id = sanatorioAlemánId,
-                Name = "Sanatorio Alemán",
-                Active = true,
-                CreatedAt = seedDate,
-                UpdatedAt = seedDate
-            });
+            entity.HasData(
+                new
+                {
+                    Id = sanatorioAlemánId,
+                    Name = "Sanatorio Alemán",
+                    Active = true,
+                    CreatedAt = seedDate,
+                    UpdatedAt = seedDate
+                },
+                new
+                {
+                    Id = centroCebienId,
+                    Name = "Centro Cebien",
+                    Active = true,
+                    CreatedAt = seedDate,
+                    UpdatedAt = seedDate
+                });
         });
 
         builder.Entity<PrivatePayerEntity>(entity =>
@@ -408,6 +420,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                     LegalName = "CLINICA SANATORIO ALEMAN SPA",
                     Active = true,
                     CreatedAt = seedDate
+                },
+                new
+                {
+                    Id = cebienPayerId,
+                    PrivateInstitutionId = centroCebienId,
+                    Rut = "76015783-K",
+                    LegalName = "DR. BENJAMIN VICENTE PARADA Y CIA. LIMITADA",
+                    Active = true,
+                    CreatedAt = seedDate
                 });
         });
 
@@ -425,15 +446,25 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.HasIndex(x => new { x.PrivateInstitutionId, x.Code, x.Version }).IsUnique();
             entity.HasOne<PrivateInstitution>().WithMany().HasForeignKey(x => x.PrivateInstitutionId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasData(new
-            {
-                Id = participationsRuleId,
-                PrivateInstitutionId = sanatorioAlemánId,
-                Code = "SANATORIO_ALEMAN_PARTICIPACIONES",
-                Version = 1,
-                Active = true,
-                CreatedAt = seedDate
-            });
+            entity.HasData(
+                new
+                {
+                    Id = participationsRuleId,
+                    PrivateInstitutionId = sanatorioAlemánId,
+                    Code = "SANATORIO_ALEMAN_PARTICIPACIONES",
+                    Version = 1,
+                    Active = true,
+                    CreatedAt = seedDate
+                },
+                new
+                {
+                    Id = cebienEmailRuleId,
+                    PrivateInstitutionId = centroCebienId,
+                    Code = "CENTRO_CEBIEN_EMAIL",
+                    Version = 1,
+                    Active = true,
+                    CreatedAt = seedDate
+                });
         });
 
         builder.Entity<PrivateLiquidation>(entity =>
@@ -444,14 +475,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 table.HasCheckConstraint("ck_liquidaciones_privadas_mes", "mes BETWEEN 1 AND 12");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_anio_contable", "anio_contable BETWEEN 1900 AND 32767");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_mes_contable", "mes_contable BETWEEN 1 AND 12");
-                table.HasCheckConstraint("ck_liquidaciones_privadas_quincena", "quincena IN (1, 2)");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_quincena", "quincena IS NULL OR quincena IN (1, 2)");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_importes_no_negativos", "bruto_total_clp >= 0 AND retencion_total_clp >= 0 AND liquido_total_clp >= 0 AND (total_servicio_clp IS NULL OR total_servicio_clp >= 0)");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_liquido_consistente", "retencion_total_clp <= bruto_total_clp AND liquido_total_clp = bruto_total_clp - retencion_total_clp");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_json_exact", "bruto_total_clp <= 9007199254740991 AND retencion_total_clp <= 9007199254740991 AND liquido_total_clp <= 9007199254740991 AND atenciones <= 9007199254740991");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_atenciones", "atenciones > 0");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_atenciones_reportadas", "atenciones_reportadas_pdf IS NULL OR atenciones_reportadas_pdf >= 0");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_minutos", "minutos_por_atencion >= 1 AND minutos_totales BETWEEN 0 AND 9007199254740991");
-                table.HasCheckConstraint("ck_liquidaciones_privadas_archivo", "tamano_archivo_bytes BETWEEN 1 AND 1048576");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_archivo", "tamano_archivo_bytes IS NULL OR tamano_archivo_bytes BETWEEN 1 AND 1048576");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_origen", "(tipo_fuente = 1 AND rut_cobrador IS NOT NULL AND numero_liquidacion IS NOT NULL AND fecha_liquidacion IS NOT NULL AND quincena IS NOT NULL AND ejecutor IS NOT NULL AND storage_key IS NOT NULL AND nombre_archivo IS NOT NULL AND tamano_archivo_bytes IS NOT NULL AND nombre_profesional_informado IS NULL AND cuerpo_fuente IS NULL AND clave_negocio IS NULL) OR (tipo_fuente = 2 AND rut_cobrador IS NULL AND numero_liquidacion IS NULL AND fecha_liquidacion IS NULL AND quincena IS NULL AND ejecutor IS NULL AND total_servicio_clp IS NULL AND atenciones_reportadas_pdf IS NULL AND storage_key IS NULL AND nombre_archivo IS NULL AND tamano_archivo_bytes IS NULL AND length(btrim(nombre_profesional_informado)) > 0 AND length(btrim(cuerpo_fuente)) > 0 AND clave_negocio IS NOT NULL)");
             });
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
@@ -462,14 +494,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.AccountingYear).HasColumnName("anio_contable");
             entity.Property(x => x.AccountingMonth).HasColumnName("mes_contable");
             entity.Property(x => x.Fortnight).HasColumnName("quincena");
+            entity.Property(x => x.SourceType).HasColumnName("tipo_fuente").HasColumnType("smallint").HasConversion<short>().HasDefaultValue(PrivateLiquidationSourceType.Pdf);
             entity.Property(x => x.PrivateInstitutionId).HasColumnName("institucion_privada_id");
             entity.Property(x => x.PayerEntityId).HasColumnName("entidad_pagadora_id");
             entity.Property(x => x.PaymentRuleId).HasColumnName("regla_pago_id");
-            entity.Property(x => x.CollectorRut).HasColumnName("rut_cobrador").HasMaxLength(10).IsRequired();
-            entity.Property(x => x.LiquidationNumber).HasColumnName("numero_liquidacion").HasMaxLength(50).IsRequired();
+            entity.Property(x => x.CollectorRut).HasColumnName("rut_cobrador").HasMaxLength(10);
+            entity.Property(x => x.ReportedProfessionalName).HasColumnName("nombre_profesional_informado").HasMaxLength(200);
+            entity.Property(x => x.LiquidationNumber).HasColumnName("numero_liquidacion").HasMaxLength(50);
             entity.Property(x => x.LiquidationDate).HasColumnName("fecha_liquidacion").HasColumnType("date");
-            entity.Property(x => x.PaymentService).HasColumnName("servicio_pago").HasMaxLength(200).IsRequired();
-            entity.Property(x => x.ExecutorName).HasColumnName("ejecutor").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.PaymentService).HasColumnName("servicio_pago").HasMaxLength(200);
+            entity.Property(x => x.ExecutorName).HasColumnName("ejecutor").HasMaxLength(200);
             entity.Property(x => x.ServiceTotalClp).HasColumnName("total_servicio_clp");
             entity.Property(x => x.GrossTotalClp).HasColumnName("bruto_total_clp");
             entity.Property(x => x.RetentionTotalClp).HasColumnName("retencion_total_clp");
@@ -479,13 +513,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.MinutesPerAttention).HasColumnName("minutos_por_atencion").HasColumnType("integer");
             entity.Property(x => x.TotalAttentionMinutes).HasColumnName("minutos_totales").HasColumnType("bigint");
             entity.Property(x => x.Sha256).HasColumnName("sha256").HasColumnType("character(64)").IsRequired();
-            entity.Property(x => x.StorageKey).HasColumnName("storage_key").HasMaxLength(100).IsRequired();
-            entity.Property(x => x.OriginalFileName).HasColumnName("nombre_archivo").HasMaxLength(255).IsRequired();
+            entity.Property(x => x.StorageKey).HasColumnName("storage_key").HasMaxLength(100);
+            entity.Property(x => x.OriginalFileName).HasColumnName("nombre_archivo").HasMaxLength(255);
             entity.Property(x => x.FileSizeBytes).HasColumnName("tamano_archivo_bytes");
+            entity.Property(x => x.SourceBody).HasColumnName("cuerpo_fuente").HasColumnType("text");
+            entity.Property(x => x.BusinessKey).HasColumnName("clave_negocio").HasColumnType("character(64)");
             entity.Property(x => x.ImportedAt).HasColumnName("importada_at").HasDefaultValueSql("now()");
             entity.HasIndex(x => new { x.ProfessionalId, x.Sha256 }).IsUnique();
             entity.HasIndex(x => new { x.ProfessionalId, x.PayerEntityId, x.LiquidationNumber, x.ServiceYear, x.ServiceMonth, x.Fortnight }).IsUnique();
             entity.HasIndex(x => new { x.ProfessionalId, x.AccountingYear, x.AccountingMonth });
+            entity.HasIndex(x => new { x.ProfessionalId, x.BusinessKey }).IsUnique().HasFilter("tipo_fuente = 2 AND clave_negocio IS NOT NULL");
             entity.HasOne<Professional>().WithMany().HasForeignKey(x => x.ProfessionalId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<MonthlyPeriod>().WithMany()
                 .HasForeignKey(x => new { x.PeriodId, x.ProfessionalId, x.AccountingYear, x.AccountingMonth })

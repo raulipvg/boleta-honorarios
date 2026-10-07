@@ -1,5 +1,8 @@
 using System.Data;
 using System.Security.Cryptography;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using GestionIngresosHonorarios.Application.Common;
 using GestionIngresosHonorarios.Application.Contracts;
 using GestionIngresosHonorarios.Application.DTOs;
@@ -15,13 +18,17 @@ namespace GestionIngresosHonorarios.Application.Services;
 public sealed class PrivateLiquidationApplicationService(
     IApplicationDbContext db,
     IPrivateLiquidationPdfParser parser,
+    ICebienEmailParser cebienParser,
     IPrivateLiquidationFileStorage storage,
     ILogger<PrivateLiquidationApplicationService> logger) : IPrivateLiquidationApplicationService
 {
     private const long MaxPdfBytes = 1_048_576;
     private const string RuleCode = "SANATORIO_ALEMAN_PARTICIPACIONES";
+    private const string CebienRuleCode = "CENTRO_CEBIEN_EMAIL";
+    private const string CebienPayerRut = "76015783-K";
     private readonly IApplicationDbContext _db = db;
     private readonly IPrivateLiquidationPdfParser _parser = parser;
+    private readonly ICebienEmailParser _cebienParser = cebienParser;
     private readonly IPrivateLiquidationFileStorage _storage = storage;
     private readonly ILogger<PrivateLiquidationApplicationService> _logger = logger;
 
@@ -74,6 +81,7 @@ public sealed class PrivateLiquidationApplicationService(
                 prepared.Payer.Id,
                 prepared.Rule.Id,
                 prepared.Parsed.CollectorRut,
+                null,
                 prepared.Parsed.LiquidationNumber,
                 prepared.Parsed.LiquidationDate,
                 prepared.Parsed.PaymentService,
@@ -88,7 +96,10 @@ public sealed class PrivateLiquidationApplicationService(
                 prepared.PdfHash,
                 storageKey,
                 prepared.OriginalFileName,
-                prepared.FileSizeBytes);
+                prepared.FileSizeBytes,
+                PrivateLiquidationSourceType.Pdf,
+                null,
+                null);
             _db.PrivateLiquidations.Add(liquidation);
             await _db.SaveChangesAsync(cancellationToken);
 
@@ -97,7 +108,7 @@ public sealed class PrivateLiquidationApplicationService(
             await transaction.CommitAsync(cancellationToken);
             committed = true;
 
-            return ToDto(liquidation, prepared.Payer, period.AppliedRetentionPercentage);
+            return ToDto(liquidation, prepared.Payer, "Sanatorio Alemán", period.AppliedRetentionPercentage);
         }
         catch
         {
@@ -111,6 +122,48 @@ public sealed class PrivateLiquidationApplicationService(
             }
             throw;
         }
+    }
+
+    public async Task<PrivateLiquidationPreviewDto> PreviewCebienEmailAsync(
+        ActorContext actor, string emailBody, short accountingYear, short accountingMonth, int minutesPerAttention,
+        CancellationToken cancellationToken)
+    {
+        var prepared = await PrepareCebienEmailAsync(
+            actor, emailBody, accountingYear, accountingMonth, minutesPerAttention, cancellationToken);
+        await EnsureCebienEmailNotDuplicateAsync(prepared, cancellationToken);
+        return ToCebienPreview(prepared);
+    }
+
+    public async Task<PrivateLiquidationDto> ImportCebienEmailAsync(
+        ActorContext actor, string emailBody, short accountingYear, short accountingMonth, int minutesPerAttention,
+        string expectedSha256, decimal expectedRetentionPercentage, CancellationToken cancellationToken)
+    {
+        var prepared = await PrepareCebienEmailAsync(
+            actor, emailBody, accountingYear, accountingMonth, minutesPerAttention, cancellationToken);
+        if (!string.Equals(prepared.Sha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            throw AppError.Conflict("El cuerpo del correo cambió después de la previsualización. Analízalo nuevamente.");
+
+        await EnsureCebienEmailNotDuplicateAsync(prepared, cancellationToken);
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var period = await GetOrCreatePeriodAsync(prepared.ProfessionalId,
+            prepared.AccountingYear, prepared.AccountingMonth, cancellationToken);
+        await LockPeriodAsync(period.Id, cancellationToken);
+        if (period.AppliedRetentionPercentage != expectedRetentionPercentage)
+            throw AppError.Conflict("La tasa anual aplicada al Mes contable cambió después de la previsualización. Analiza nuevamente el correo.");
+
+        await EnsureCebienEmailNotDuplicateAsync(prepared, cancellationToken);
+        var totals = IncomeCalculator.CalculateFromGross(prepared.Parsed.GrossTotalClp, period.AppliedRetentionPercentage);
+        EnsureCebienBreakdownMatches(prepared.Parsed, period.AppliedRetentionPercentage, totals);
+
+        var liquidation = CreateCebienLiquidation(prepared, period, totals);
+        _db.PrivateLiquidations.Add(liquidation);
+        await _db.SaveChangesAsync(cancellationToken);
+        await RecalculatePrivateTotalsAsync(period, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return ToDto(liquidation, prepared.Payer, prepared.PrivateInstitutionName, period.AppliedRetentionPercentage);
     }
 
     public async Task<IReadOnlyList<PrivateLiquidationDto>> ListAsync(
@@ -139,7 +192,9 @@ public sealed class PrivateLiquidationApplicationService(
                 x.Payer.Id,
                 x.Payer.LegalName,
                 x.Payer.Rut,
+                ToSourceCode(x.Liquidation.SourceType),
                 x.Liquidation.CollectorRut,
+                x.Liquidation.ReportedProfessionalName,
                 x.Liquidation.LiquidationNumber,
                 x.Liquidation.LiquidationDate,
                 x.Liquidation.ServiceYear,
@@ -168,8 +223,22 @@ public sealed class PrivateLiquidationApplicationService(
         var liquidation = await _db.PrivateLiquidations.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == liquidationId, cancellationToken) ?? throw AppError.NotFound();
         EnsureCanRead(actor, liquidation.ProfessionalId);
+        if (liquidation.SourceType != PrivateLiquidationSourceType.Pdf || liquidation.StorageKey is null
+            || liquidation.OriginalFileName is null)
+            throw AppError.BadRequest("Esta liquidación no tiene un PDF descargable.");
         var content = await _storage.OpenReadAsync(liquidation.StorageKey, cancellationToken);
         return new PrivateLiquidationFile(content, liquidation.OriginalFileName);
+    }
+
+    public async Task<string> ReadEmailSourceAsync(
+        ActorContext actor, Guid liquidationId, CancellationToken cancellationToken)
+    {
+        var liquidation = await _db.PrivateLiquidations.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == liquidationId, cancellationToken) ?? throw AppError.NotFound();
+        EnsureCanRead(actor, liquidation.ProfessionalId);
+        if (liquidation.SourceType != PrivateLiquidationSourceType.EmailBody || liquidation.SourceBody is null)
+            throw AppError.BadRequest("Esta liquidación no tiene un cuerpo de correo asociado.");
+        return liquidation.SourceBody;
     }
 
     public async Task DeleteAsync(ActorContext actor, Guid liquidationId, CancellationToken cancellationToken)
@@ -178,7 +247,7 @@ public sealed class PrivateLiquidationApplicationService(
         var liquidation = await _db.PrivateLiquidations.SingleOrDefaultAsync(
             x => x.Id == liquidationId && x.ProfessionalId == ownerId, cancellationToken) ?? throw AppError.NotFound();
         var storageKey = liquidation.StorageKey;
-        var fileBackup = await TryReadFileAsync(storageKey, cancellationToken);
+        var fileBackup = storageKey is null ? null : await TryReadFileAsync(storageKey, cancellationToken);
         var fileRemoved = false;
 
         try
@@ -192,13 +261,16 @@ public sealed class PrivateLiquidationApplicationService(
             await _db.SaveChangesAsync(cancellationToken);
             await RecalculatePrivateTotalsAsync(period, cancellationToken);
             await _db.SaveChangesAsync(cancellationToken);
-            await _storage.DeleteAsync(storageKey, cancellationToken);
-            fileRemoved = true;
+            if (storageKey is not null)
+            {
+                await _storage.DeleteAsync(storageKey, cancellationToken);
+                fileRemoved = true;
+            }
             await transaction.CommitAsync(cancellationToken);
         }
         catch
         {
-            if (fileRemoved && fileBackup is not null)
+            if (fileRemoved && fileBackup is not null && storageKey is not null)
             {
                 try
                 {
@@ -299,6 +371,196 @@ public sealed class PrivateLiquidationApplicationService(
             minutesPerAttention, pdfBytes, hash, originalFileName, fileSizeBytes);
     }
 
+    private async Task<PreparedCebienEmail> PrepareCebienEmailAsync(
+        ActorContext actor, string emailBody, short accountingYear, short accountingMonth, int minutesPerAttention,
+        CancellationToken cancellationToken)
+    {
+        var professionalId = RequireOwnProfessional(actor);
+        if (string.IsNullOrWhiteSpace(emailBody))
+            throw AppError.BadRequest("Pega el cuerpo del correo de Centro Cebien.");
+        if (accountingYear < 1900 || accountingMonth is < 1 or > 12)
+            throw AppError.BadRequest("Selecciona un Mes contable válido.");
+        if (minutesPerAttention < 1)
+            throw AppError.BadRequest("Los minutos por atención deben ser enteros mayores que cero.");
+
+        ParsedCebienEmail parsed;
+        try
+        {
+            parsed = _cebienParser.Parse(emailBody);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw AppError.BadRequest(exception.Message);
+        }
+
+        var professional = await _db.Professionals.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == professionalId, cancellationToken)
+            ?? throw AppError.Conflict("No existe un perfil profesional asociado a la cuenta autenticada.");
+        if (!string.Equals(NormalizeProfessionalName(professional.Name),
+                NormalizeProfessionalName(parsed.ProfessionalName), StringComparison.Ordinal))
+            throw AppError.Conflict("El nombre PROFESIONAL del correo de Centro Cebien no coincide con tu perfil.");
+
+        var payer = await _db.PrivatePayerEntities.AsNoTracking().SingleOrDefaultAsync(
+            x => x.Rut == CebienPayerRut && x.Active, cancellationToken)
+            ?? throw new InvalidOperationException("No está configurado el pagador de Centro Cebien.");
+        var rule = await _db.PrivatePaymentRules.AsNoTracking().SingleOrDefaultAsync(
+            x => x.PrivateInstitutionId == payer.PrivateInstitutionId && x.Code == CebienRuleCode && x.Active,
+            cancellationToken)
+            ?? throw new InvalidOperationException("No está configurada la regla de correo de Centro Cebien.");
+        var institutionName = await _db.PrivateInstitutions.AsNoTracking()
+            .Where(x => x.Id == payer.PrivateInstitutionId)
+            .Select(x => x.Name)
+            .SingleAsync(cancellationToken);
+
+        var period = await _db.MonthlyPeriods.AsNoTracking().SingleOrDefaultAsync(
+            x => x.ProfessionalId == professionalId && x.Year == accountingYear && x.Month == accountingMonth,
+            cancellationToken);
+        var retentionPercentage = period?.AppliedRetentionPercentage
+            ?? await _db.AnnualRetentionRates.AsNoTracking()
+                .Where(x => x.Year == accountingYear)
+                .Select(x => (decimal?)x.Percentage)
+                .SingleOrDefaultAsync(cancellationToken)
+            ?? throw AppError.Conflict("No existe una tasa de retención configurada para el año del Mes contable.");
+        var totals = IncomeCalculator.CalculateFromGross(parsed.GrossTotalClp, retentionPercentage);
+        EnsureCebienBreakdownMatches(parsed, retentionPercentage, totals);
+
+        var normalizedBody = NormalizeEmailBody(emailBody);
+        var sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedBody)));
+        var businessKey = CreateCebienBusinessKey(
+            professionalId, payer.Id, accountingYear, accountingMonth, parsed);
+
+        return new PreparedCebienEmail(
+            professionalId, parsed, payer, rule, institutionName, accountingYear, accountingMonth,
+            retentionPercentage, totals, minutesPerAttention, emailBody, sha256, businessKey);
+    }
+
+    private static void EnsureCebienBreakdownMatches(
+        ParsedCebienEmail parsed, decimal retentionPercentage, GrossIncomeTotals totals)
+    {
+        if (parsed.ReportedRetentionPercentage != retentionPercentage
+            || parsed.ReportedRetentionClp != totals.RetentionClp
+            || parsed.ReportedNetTotalClp != totals.NetClp)
+            throw AppError.Conflict("La tasa o el desglose de retención del correo no coincide con el cálculo del año contable.");
+    }
+
+    private async Task EnsureCebienEmailNotDuplicateAsync(
+        PreparedCebienEmail prepared, CancellationToken cancellationToken)
+    {
+        if (await _db.PrivateLiquidations.AsNoTracking().AnyAsync(x =>
+                x.ProfessionalId == prepared.ProfessionalId
+                && (x.Sha256 == prepared.Sha256
+                    || (x.SourceType == PrivateLiquidationSourceType.EmailBody && x.BusinessKey == prepared.BusinessKey)),
+                cancellationToken))
+            throw AppError.Conflict("Este correo ya fue importado. Elimina la liquidación anterior antes de cargar una corrección.");
+    }
+
+    private static PrivateLiquidation CreateCebienLiquidation(
+        PreparedCebienEmail prepared, MonthlyPeriod period, GrossIncomeTotals totals) => new(
+        period.Id,
+        prepared.ProfessionalId,
+        prepared.Parsed.ServiceYear,
+        prepared.Parsed.ServiceMonth,
+        period.Year,
+        period.Month,
+        null,
+        prepared.Payer.PrivateInstitutionId,
+        prepared.Payer.Id,
+        prepared.Rule.Id,
+        null,
+        prepared.Parsed.ProfessionalName,
+        null,
+        null,
+        prepared.Parsed.PaymentService,
+        null,
+        null,
+        totals.GrossClp,
+        totals.RetentionClp,
+        totals.NetClp,
+        prepared.Parsed.AttentionCount,
+        null,
+        prepared.MinutesPerAttention,
+        prepared.Sha256,
+        null,
+        null,
+        null,
+        PrivateLiquidationSourceType.EmailBody,
+        prepared.EmailBody,
+        prepared.BusinessKey);
+
+    private static string CreateCebienBusinessKey(
+        Guid professionalId, Guid payerId, short accountingYear, short accountingMonth, ParsedCebienEmail parsed)
+    {
+        var attentionCounts = string.Join(";", parsed.AttentionCountsByService
+            .OrderBy(x => NormalizeProfessionalName(x.ServiceName), StringComparer.Ordinal)
+            .Select(x => $"{NormalizeProfessionalName(x.ServiceName)}={x.Count.ToString(CultureInfo.InvariantCulture)}"));
+        var identity = string.Join('|',
+            professionalId.ToString("N"),
+            payerId.ToString("N"),
+            $"{accountingYear:D4}-{accountingMonth:D2}",
+            $"{parsed.ServiceYear:D4}-{parsed.ServiceMonth:D2}",
+            parsed.GrossTotalClp.ToString(CultureInfo.InvariantCulture),
+            attentionCounts);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
+    }
+
+    private static string NormalizeEmailBody(string emailBody) => string.Join('\n',
+        emailBody.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => Regex.Replace(line.Trim(), @"\s+", " ", RegexOptions.CultureInvariant))
+            .Where(line => line.Length > 0));
+
+    private static string NormalizeProfessionalName(string name)
+    {
+        var decomposed = name.Normalize(NormalizationForm.FormD);
+        var withoutAccents = new string(decomposed.Where(character =>
+            CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark).ToArray());
+        var tokens = Regex.Split(withoutAccents.ToUpperInvariant(), @"[^A-Z0-9]+", RegexOptions.CultureInvariant)
+            .Where(token => token.Length > 0)
+            .ToList();
+        if (tokens.Count > 0 && tokens[0] is "DRA" or "DR" or "DOCTORA" or "DOCTOR")
+            tokens.RemoveAt(0);
+        return string.Join(' ', tokens);
+    }
+
+    private static PrivateLiquidationPreviewDto ToCebienPreview(PreparedCebienEmail prepared) => new(
+        prepared.Sha256,
+        ToSourceCode(PrivateLiquidationSourceType.EmailBody),
+        prepared.PrivateInstitutionName,
+        prepared.Payer.Id,
+        prepared.Payer.LegalName,
+        prepared.Payer.Rut,
+        null,
+        prepared.Parsed.ProfessionalName,
+        null,
+        null,
+        prepared.Parsed.ServiceYear,
+        prepared.Parsed.ServiceMonth,
+        prepared.AccountingYear,
+        prepared.AccountingMonth,
+        null,
+        prepared.Parsed.PaymentService,
+        null,
+        prepared.Parsed.AttentionCountsByService,
+        null,
+        prepared.Totals.GrossClp,
+        prepared.RetentionPercentage,
+        prepared.Totals.RetentionClp,
+        prepared.Totals.NetClp,
+        prepared.Parsed.AttentionCount,
+        null,
+        prepared.MinutesPerAttention,
+        checked(prepared.Parsed.AttentionCount * prepared.MinutesPerAttention),
+        null,
+        null);
+
+    private static string ToSourceCode(PrivateLiquidationSourceType sourceType) => sourceType switch
+    {
+        PrivateLiquidationSourceType.Pdf => "pdf",
+        PrivateLiquidationSourceType.EmailBody => "email",
+        _ => throw new ArgumentOutOfRangeException(nameof(sourceType))
+    };
+
     private async Task<MonthlyPeriod> GetOrCreatePeriodAsync(Guid professionalId, short year, short month, CancellationToken cancellationToken)
     {
         var existing = await _db.MonthlyPeriods.SingleOrDefaultAsync(
@@ -380,11 +642,13 @@ public sealed class PrivateLiquidationApplicationService(
 
     private static PrivateLiquidationPreviewDto ToPreview(PreparedLiquidation prepared, decimal retentionPercentage) => new(
         prepared.PdfHash,
+        ToSourceCode(PrivateLiquidationSourceType.Pdf),
         "Sanatorio Alemán",
         prepared.Payer.Id,
         prepared.Payer.LegalName,
         prepared.Payer.Rut,
         prepared.Parsed.CollectorRut,
+        null,
         prepared.Parsed.LiquidationNumber,
         prepared.Parsed.LiquidationDate,
         prepared.Parsed.ServiceYear,
@@ -394,6 +658,7 @@ public sealed class PrivateLiquidationApplicationService(
         prepared.Parsed.Fortnight,
         prepared.Parsed.PaymentService,
         prepared.Parsed.ExecutorName,
+        Array.Empty<CebienAttentionCount>(),
         prepared.Parsed.ServiceTotalClp,
         prepared.Totals.GrossClp,
         retentionPercentage,
@@ -406,13 +671,16 @@ public sealed class PrivateLiquidationApplicationService(
         prepared.FileSizeBytes,
         prepared.OriginalFileName);
 
-    private static PrivateLiquidationDto ToDto(PrivateLiquidation liquidation, PrivatePayerEntity payer, decimal appliedRetentionPercentage) => new(
+    private static PrivateLiquidationDto ToDto(
+        PrivateLiquidation liquidation, PrivatePayerEntity payer, string privateInstitutionName, decimal appliedRetentionPercentage) => new(
         liquidation.Id,
-        "Sanatorio Alemán",
+        privateInstitutionName,
         payer.Id,
         payer.LegalName,
         payer.Rut,
+        ToSourceCode(liquidation.SourceType),
         liquidation.CollectorRut,
+        liquidation.ReportedProfessionalName,
         liquidation.LiquidationNumber,
         liquidation.LiquidationDate,
         liquidation.ServiceYear,
@@ -483,4 +751,19 @@ public sealed class PrivateLiquidationApplicationService(
         string PdfHash,
         string OriginalFileName,
         long FileSizeBytes);
+
+    private sealed record PreparedCebienEmail(
+        Guid ProfessionalId,
+        ParsedCebienEmail Parsed,
+        PrivatePayerEntity Payer,
+        PrivatePaymentRule Rule,
+        string PrivateInstitutionName,
+        short AccountingYear,
+        short AccountingMonth,
+        decimal RetentionPercentage,
+        GrossIncomeTotals Totals,
+        int MinutesPerAttention,
+        string EmailBody,
+        string Sha256,
+        string BusinessKey);
 }

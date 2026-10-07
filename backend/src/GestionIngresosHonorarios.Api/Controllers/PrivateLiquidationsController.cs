@@ -56,6 +56,33 @@ public sealed class PrivateLiquidationsController(
         return CreatedAtAction(nameof(List), new { year = result.AccountingYear, month = result.AccountingMonth }, result);
     }
 
+    [HttpPost("cebien/preview")]
+    [Authorize(Policy = PermissionCatalog.PrivateLiquidationsCreate)]
+    [RequestSizeLimit(64 * 1024)]
+    public async Task<ActionResult<PrivateLiquidationPreviewDto>> PreviewCebienEmail(
+        [FromBody] CebienEmailPreviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        var preview = await liquidations.PreviewCebienEmailAsync(
+            await actors.GetAsync(User.GetSubjectId(), cancellationToken), request.EmailBody,
+            request.AccountingYear, request.AccountingMonth, request.MinutesPerAttention, cancellationToken);
+        return Ok(preview);
+    }
+
+    [HttpPost("cebien")]
+    [Authorize(Policy = PermissionCatalog.PrivateLiquidationsCreate)]
+    [RequestSizeLimit(64 * 1024)]
+    public async Task<ActionResult<PrivateLiquidationDto>> ImportCebienEmail(
+        [FromBody] CebienEmailImportRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await liquidations.ImportCebienEmailAsync(
+            await actors.GetAsync(User.GetSubjectId(), cancellationToken), request.EmailBody,
+            request.AccountingYear, request.AccountingMonth, request.MinutesPerAttention,
+            request.ExpectedSha256, request.ExpectedRetentionPercentage, cancellationToken);
+        return CreatedAtAction(nameof(List), new { year = result.AccountingYear, month = result.AccountingMonth }, result);
+    }
+
     [HttpGet]
     [Authorize(Policy = PermissionCatalog.PrivateLiquidationsRead)]
     public async Task<ActionResult<IReadOnlyList<PrivateLiquidationDto>>> List(
@@ -73,6 +100,15 @@ public sealed class PrivateLiquidationsController(
         var file = await liquidations.DownloadAsync(
             await actors.GetAsync(User.GetSubjectId(), cancellationToken), liquidationId, cancellationToken);
         return File(file.Content, "application/pdf", file.FileName, enableRangeProcessing: false);
+    }
+
+    [HttpGet("{liquidationId:guid}/source")]
+    [Authorize(Policy = PermissionCatalog.PrivateLiquidationsRead)]
+    public async Task<IActionResult> ReadEmailSource(Guid liquidationId, CancellationToken cancellationToken)
+    {
+        var source = await liquidations.ReadEmailSourceAsync(
+            await actors.GetAsync(User.GetSubjectId(), cancellationToken), liquidationId, cancellationToken);
+        return Content(source, "text/plain; charset=utf-8");
     }
 
     [HttpDelete("{liquidationId:guid}")]

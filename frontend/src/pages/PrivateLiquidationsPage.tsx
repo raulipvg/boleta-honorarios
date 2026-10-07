@@ -6,8 +6,10 @@ import {
   Button,
   Card,
   Descriptions,
+  DatePicker,
   Empty,
   Form,
+  Input,
   InputNumber,
   Modal,
   Popconfirm,
@@ -23,7 +25,7 @@ import {
   type TableColumnsType,
   type UploadFile,
 } from 'antd'
-import { DeleteOutlined, DownloadOutlined, EyeOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, EyeOutlined, FilePdfOutlined, MailOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
 import { privateLiquidationService } from '../services/private-liquidations/privateLiquidationService'
 import { professionalService } from '../services/professionals/professionalService'
@@ -37,6 +39,7 @@ import { MonthSelector } from '../components/layout/MonthSelector'
 import type { PrivateLiquidation, PrivateLiquidationPreview, ProfessionalSummary } from '../types/api'
 
 const MAX_PDF_BYTES = 1_048_576
+type PrivateImportInstitution = 'sanatorio-aleman' | 'centro-cebien'
 
 export function PrivateLiquidationsPage() {
   const { message } = AntdApp.useApp()
@@ -57,6 +60,9 @@ export function PrivateLiquidationsPage() {
   const [liquidations, setLiquidations] = useState<PrivateLiquidation[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadFileList, setUploadFileList] = useState<UploadFile[]>([])
+  const [selectedImportInstitution, setSelectedImportInstitution] = useState<PrivateImportInstitution | null>(null)
+  const [emailBody, setEmailBody] = useState('')
+  const [cebienAccountingMonth, setCebienAccountingMonth] = useState<Dayjs | null>(null)
   const [minutesPerAttention, setMinutesPerAttention] = useState<number | null>(null)
   const [preview, setPreview] = useState<PrivateLiquidationPreview | null>(null)
   const [importModalOpen, setImportModalOpen] = useState(false)
@@ -67,6 +73,8 @@ export function PrivateLiquidationsPage() {
   const [previewingId, setPreviewingId] = useState<string | null>(null)
   const [previewLiquidation, setPreviewLiquidation] = useState<PrivateLiquidation | null>(null)
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
+  const [emailSourceText, setEmailSourceText] = useState<string | null>(null)
+  const [readingEmailSourceId, setReadingEmailSourceId] = useState<string | null>(null)
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { year, month } = monthValue(selectedMonth)
@@ -105,6 +113,9 @@ export function PrivateLiquidationsPage() {
   }, [previewPdfUrl])
 
   const resetImportDraft = () => {
+    setSelectedImportInstitution(null)
+    setEmailBody('')
+    setCebienAccountingMonth(null)
     setPreview(null)
     setSelectedFile(null)
     setUploadFileList([])
@@ -119,12 +130,8 @@ export function PrivateLiquidationsPage() {
   }
 
   const previewDocument = async () => {
-    if (!selectedFile) {
-      setImportError('Selecciona un archivo PDF.')
-      return
-    }
-    if (selectedFile.size > MAX_PDF_BYTES) {
-      setImportError('El PDF no puede superar 1 MB.')
+    if (!selectedImportInstitution) {
+      setImportError('Selecciona una institución privada.')
       return
     }
     if (minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1) {
@@ -132,17 +139,51 @@ export function PrivateLiquidationsPage() {
       return
     }
 
+    if (selectedImportInstitution === 'sanatorio-aleman') {
+      if (!profileRut) {
+        setImportError('Completa y valida tu RUT en el perfil antes de importar liquidaciones de Sanatorio Alemán.')
+        return
+      }
+      if (!selectedFile) {
+        setImportError('Selecciona un archivo PDF.')
+        return
+      }
+      if (selectedFile.size > MAX_PDF_BYTES) {
+        setImportError('El PDF no puede superar 1 MB.')
+        return
+      }
+    } else {
+      if (!emailBody.trim()) {
+        setImportError('Pega el cuerpo del correo de Centro Cebien.')
+        return
+      }
+      if (!cebienAccountingMonth) {
+        setImportError('Selecciona el Mes contable.')
+        return
+      }
+    }
+
     const loadingKey = 'private-liquidation-analysis'
     setBusy(true)
     setImportError(null)
     setPreview(null)
-    message.open({ key: loadingKey, type: 'loading', content: 'Analizando liquidación…', duration: 0 })
+    message.open({
+      key: loadingKey,
+      type: 'loading',
+      content: selectedImportInstitution === 'centro-cebien' ? 'Analizando correo…' : 'Analizando liquidación…',
+      duration: 0,
+    })
     try {
-      setPreview(await privateLiquidationService.preview(selectedFile, minutesPerAttention))
+      const parsed = selectedImportInstitution === 'centro-cebien'
+        ? await privateLiquidationService.previewCebien(
+          emailBody, monthValue(cebienAccountingMonth!).year, monthValue(cebienAccountingMonth!).month, minutesPerAttention)
+        : await privateLiquidationService.preview(selectedFile!, minutesPerAttention)
+      setPreview(parsed)
       message.destroy(loadingKey)
-      message.success('PDF analizado. Revisa los datos antes de importar.')
+      message.success('Datos analizados. Revisa la previsualización antes de importar.')
     } catch (requestError) {
-      setImportError(getApiErrorMessage(requestError, 'No se pudo interpretar el PDF.'))
+      setImportError(getApiErrorMessage(requestError,
+        selectedImportInstitution === 'centro-cebien' ? 'No se pudo interpretar el correo.' : 'No se pudo interpretar el PDF.'))
     } finally {
       message.destroy(loadingKey)
       setBusy(false)
@@ -150,13 +191,20 @@ export function PrivateLiquidationsPage() {
   }
 
   const confirmImport = async () => {
-    if (!selectedFile || !preview || minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1) return
+    if (!preview || minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1) return
+    if (preview.sourceType === 'pdf' && !selectedFile) return
+    if (preview.sourceType === 'email' && (!emailBody.trim() || !cebienAccountingMonth)) return
     const loadingKey = 'private-liquidation-import'
     setBusy(true)
     setImportError(null)
     message.open({ key: loadingKey, type: 'loading', content: 'Importando liquidación…', duration: 0 })
     try {
-      const imported = await privateLiquidationService.import(selectedFile, minutesPerAttention, preview.sha256, preview.appliedRetentionPercentage)
+      const imported = preview.sourceType === 'email'
+        ? await privateLiquidationService.importCebien(
+          emailBody, monthValue(cebienAccountingMonth!).year, monthValue(cebienAccountingMonth!).month,
+          minutesPerAttention, preview.sha256, preview.appliedRetentionPercentage)
+        : await privateLiquidationService.import(
+          selectedFile!, minutesPerAttention, preview.sha256, preview.appliedRetentionPercentage)
       message.destroy(loadingKey)
       setImportModalOpen(false)
       resetImportDraft()
@@ -197,7 +245,7 @@ export function PrivateLiquidationsPage() {
   }, [])
 
   const previewFile = useCallback(async (liquidation: PrivateLiquidation) => {
-    if (previewingId !== null) return
+    if (previewingId !== null || readingEmailSourceId !== null) return
     setPreviewingId(liquidation.id)
     try {
       const blob = await privateLiquidationService.download(liquidation.id)
@@ -209,32 +257,49 @@ export function PrivateLiquidationsPage() {
     } finally {
       setPreviewingId(null)
     }
-  }, [previewingId])
+  }, [previewingId, readingEmailSourceId])
+
+  const previewEmailSource = useCallback(async (liquidation: PrivateLiquidation) => {
+    if (previewingId !== null || readingEmailSourceId !== null) return
+    setReadingEmailSourceId(liquidation.id)
+    try {
+      const source = await privateLiquidationService.source(liquidation.id)
+      setPreviewLiquidation(liquidation)
+      setPreviewPdfUrl(null)
+      setEmailSourceText(source)
+      setPreviewModalOpen(true)
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'No se pudo abrir el correo original.'))
+    } finally {
+      setReadingEmailSourceId(null)
+    }
+  }, [previewingId, readingEmailSourceId])
 
   const closePreviewModal = () => {
     setPreviewModalOpen(false)
     setPreviewLiquidation(null)
     setPreviewPdfUrl(null)
+    setEmailSourceText(null)
   }
 
   const deleteLiquidation = useCallback(async (liquidation: PrivateLiquidation) => {
     try {
       await privateLiquidationService.delete(liquidation.id)
       setLiquidations(await loadLiquidations())
-      message.success('Se eliminó el PDF y se actualizaron los totales del mes.')
+      message.success('Se eliminó la liquidación y se actualizaron los totales del mes.')
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, 'No se pudo eliminar la liquidación.'))
     }
   }, [loadLiquidations, message])
 
   const columns = useMemo<TableColumnsType<PrivateLiquidation>>(() => [
-    { title: 'Quincena', dataIndex: 'fortnight', key: 'fortnight', width: 100, render: value => `${value}.ª` },
-    { title: 'Liquidación', dataIndex: 'liquidationNumber', key: 'number', width: 125 },
-    { title: 'Fecha', dataIndex: 'liquidationDate', key: 'date', width: 115, render: value => dayjs(value).format('DD-MM-YYYY') },
+    { title: 'Quincena', dataIndex: 'fortnight', key: 'fortnight', width: 100, render: value => value === null ? '—' : `${value}.ª` },
+    { title: 'Liquidación', dataIndex: 'liquidationNumber', key: 'number', width: 125, render: value => value ?? '—' },
+    { title: 'Fecha', dataIndex: 'liquidationDate', key: 'date', width: 115, render: value => value ? dayjs(value).format('DD-MM-YYYY') : '—' },
     { title: 'Entidad pagadora', key: 'payer', width: 250, render: (_, row) => <Space orientation="vertical" size={0}><span>{row.payerLegalName}</span><Typography.Text type="secondary">RUT {row.payerRut}</Typography.Text></Space> },
-    { title: 'RUT cobrador', dataIndex: 'collectorRut', key: 'collector-rut', width: 125 },
+    { title: 'RUT cobrador', dataIndex: 'collectorRut', key: 'collector-rut', width: 125, render: value => value ?? '—' },
     { title: 'Servicio', dataIndex: 'paymentService', key: 'service', width: 170 },
-    { title: 'Ejecutor', dataIndex: 'executorName', key: 'executor', width: 190 },
+    { title: 'Ejecutor', dataIndex: 'executorName', key: 'executor', width: 190, render: value => value ?? '—' },
     { title: 'Total servicio', dataIndex: 'serviceTotalClp', key: 'service-total', align: 'right', width: 130, render: value => value === null ? '—' : formatClp(value) },
     { title: 'Bruto', dataIndex: 'grossTotalClp', key: 'gross', align: 'right', width: 130, render: formatClp },
     { title: 'Tasa', dataIndex: 'appliedRetentionPercentage', key: 'retention-rate', align: 'right', width: 90, render: value => formatRate(value) },
@@ -247,14 +312,16 @@ export function PrivateLiquidationsPage() {
     {
       title: 'Acciones', key: 'actions', fixed: 'right', width: 145,
       render: (_, row) => <Space>
-        <Tooltip title="Ver PDF"><Button type="text" icon={<EyeOutlined />} loading={previewingId === row.id} disabled={previewingId !== null && previewingId !== row.id} onClick={() => void previewFile(row)} aria-label="Ver PDF" /></Tooltip>
-        <Tooltip title="Descargar PDF"><Button type="text" icon={<DownloadOutlined />} loading={downloadingId === row.id} onClick={() => void downloadFile(row)} aria-label="Descargar PDF" /></Tooltip>
+        {row.sourceType === 'pdf' ? <>
+          <Tooltip title="Ver PDF"><Button type="text" icon={<EyeOutlined />} loading={previewingId === row.id} disabled={(previewingId !== null && previewingId !== row.id) || readingEmailSourceId !== null} onClick={() => void previewFile(row)} aria-label="Ver PDF" /></Tooltip>
+          <Tooltip title="Descargar PDF"><Button type="text" icon={<DownloadOutlined />} loading={downloadingId === row.id} onClick={() => void downloadFile(row)} aria-label="Descargar PDF" /></Tooltip>
+        </> : <Tooltip title="Ver correo original"><Button type="text" icon={<MailOutlined />} loading={readingEmailSourceId === row.id} disabled={(readingEmailSourceId !== null && readingEmailSourceId !== row.id) || previewingId !== null} onClick={() => void previewEmailSource(row)} aria-label="Ver correo original" /></Tooltip>}
         {canDelete && <Popconfirm title="Eliminar esta liquidación y sus totales" okText="Eliminar" cancelText="Cancelar" onConfirm={() => void deleteLiquidation(row)}>
           <Tooltip title="Eliminar liquidación"><Button type="text" danger icon={<DeleteOutlined />} aria-label="Eliminar liquidación" /></Tooltip>
         </Popconfirm>}
       </Space>,
     },
-  ], [canDelete, deleteLiquidation, downloadFile, downloadingId, previewFile, previewingId])
+  ], [canDelete, deleteLiquidation, downloadFile, downloadingId, previewEmailSource, previewFile, previewingId, readingEmailSourceId])
 
   const privateGross = liquidations.reduce((total, item) => total + item.grossTotalClp, 0)
   const privateRetention = liquidations.reduce((total, item) => total + item.retentionTotalClp, 0)
@@ -266,12 +333,12 @@ export function PrivateLiquidationsPage() {
     <section className="page-heading">
       <div>
         <Typography.Text className="eyebrow">INGRESOS PRIVADOS</Typography.Text>
-        <Typography.Title level={1}>Liquidaciones de Sanatorio Alemán.</Typography.Title>
-        <Typography.Paragraph>Importa cada PDF y conserva el cálculo del líquido por documento.</Typography.Paragraph>
+        <Typography.Title level={1}>Liquidaciones privadas.</Typography.Title>
+        <Typography.Paragraph>Importa y revisa los documentos de tus instituciones privadas.</Typography.Paragraph>
       </div>
       <Space>
-        <Tag color="purple">Participaciones · CLP</Tag>
-        {canCreate && <Button type="primary" icon={<PlusOutlined />} disabled={!profileRut} onClick={() => {
+        <Tag color="purple">Instituciones privadas · CLP</Tag>
+        {canCreate && <Button type="primary" icon={<PlusOutlined />} onClick={() => {
           resetImportDraft()
           setImportModalOpen(true)
         }}>Nueva liquidación</Button>}
@@ -296,13 +363,6 @@ export function PrivateLiquidationsPage() {
 
     {error && <Alert type="error" showIcon title={error} closable={{ onClose: () => setError(null) }} />}
     {isAdmin && !professionalId ? <Card className="empty-workspace" variant="borderless"><Empty description="Selecciona un profesional para consultar sus liquidaciones." /></Card> : <>
-      {canCreate && !profileRut && <Alert
-        type="warning"
-        showIcon
-        title="Completa tu RUT profesional antes de importar una liquidación."
-        action={<Button type="link" onClick={() => navigate('/settings')}>Ir a configuración</Button>}
-      />}
-
       <Card className="dashboard-table-card" variant="borderless">
         <div className="section-card-heading">
           <div><Typography.Text className="eyebrow">{monthLabel(year, month).toUpperCase()}</Typography.Text><Typography.Title level={3}>Liquidaciones importadas</Typography.Title></div>
@@ -342,14 +402,20 @@ export function PrivateLiquidationsPage() {
     </>}
 
     <Modal
-      title={previewLiquidation ? `Vista previa · Liquidación ${previewLiquidation.liquidationNumber}` : 'Vista previa PDF'}
+      title={previewLiquidation?.sourceType === 'email'
+        ? `Correo original · ${previewLiquidation.paymentService}`
+        : `Vista previa · Liquidación ${previewLiquidation?.liquidationNumber ?? ''}`}
       open={previewModalOpen}
       onCancel={closePreviewModal}
       footer={null}
       destroyOnHidden
       width={960}
     >
-      {previewPdfUrl
+      {previewLiquidation?.sourceType === 'email'
+        ? emailSourceText !== null
+          ? <pre style={{ maxHeight: '75vh', overflow: 'auto', whiteSpace: 'pre-wrap', margin: 0 }}>{emailSourceText}</pre>
+          : <Spin />
+        : previewPdfUrl
         ? <iframe
           title={`Vista previa de la liquidación ${previewLiquidation?.liquidationNumber ?? ''}`}
           src={previewPdfUrl}
@@ -359,14 +425,21 @@ export function PrivateLiquidationsPage() {
     </Modal>
 
     {canCreate && <Modal
-      title={<Space><FilePdfOutlined /> Nueva liquidación privada</Space>}
+      title={<Space>{selectedImportInstitution === 'centro-cebien' ? <MailOutlined /> : <FilePdfOutlined />} Nueva liquidación privada</Space>}
       open={importModalOpen}
       onCancel={closeImportModal}
       onOk={() => { if (preview) void confirmImport(); else void previewDocument() }}
-      okText={preview ? 'Confirmar importación' : 'Analizar PDF'}
       cancelText="Cancelar"
       confirmLoading={busy}
-      okButtonProps={{ disabled: busy || (preview === null && (!profileRut || !selectedFile || minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1)) }}
+      okText={preview ? 'Confirmar importación' : selectedImportInstitution === 'centro-cebien' ? 'Analizar correo' : 'Analizar PDF'}
+      okButtonProps={{ disabled: busy || (preview
+        ? (preview.sourceType === 'pdf'
+          ? !selectedFile
+          : !emailBody.trim() || cebienAccountingMonth === null)
+        : (minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1
+          || (selectedImportInstitution === 'sanatorio-aleman' && (!selectedFile || !profileRut))
+          || (selectedImportInstitution === 'centro-cebien' && (!emailBody.trim() || cebienAccountingMonth === null))
+          || selectedImportInstitution === null)) }}
       cancelButtonProps={{ disabled: busy }}
       closable={!busy}
       mask={{ closable: !busy }}
@@ -376,7 +449,37 @@ export function PrivateLiquidationsPage() {
     >
       {importError && <Alert type="error" showIcon title={importError} closable={{ onClose: () => setImportError(null) }} style={{ marginBottom: 16 }} />}
       <Form layout="vertical" requiredMark={false}>
-        <Form.Item label="Archivo PDF" required>
+        <Form.Item label="Institución privada" required>
+          <Select
+            value={selectedImportInstitution ?? undefined}
+            placeholder="Selecciona una institución"
+            disabled={busy}
+            onChange={value => {
+              setSelectedImportInstitution(value)
+              setSelectedFile(null)
+              setUploadFileList([])
+              setEmailBody('')
+              setCebienAccountingMonth(null)
+              setMinutesPerAttention(null)
+              setPreview(null)
+              setImportError(null)
+            }}
+            options={[
+              { value: 'sanatorio-aleman', label: 'Sanatorio Alemán' },
+              { value: 'centro-cebien', label: 'Centro Cebien' },
+            ]}
+          />
+        </Form.Item>
+
+        {selectedImportInstitution === 'sanatorio-aleman' && <>
+          {!profileRut && <Alert
+            type="warning"
+            showIcon
+            title="Completa tu RUT profesional antes de importar una liquidación de Sanatorio Alemán."
+            action={<Button type="link" onClick={() => navigate('/settings')}>Ir a configuración</Button>}
+            style={{ marginBottom: 16 }}
+          />}
+          <Form.Item label="Archivo PDF" required>
           <Upload.Dragger
             accept="application/pdf,.pdf"
             maxCount={1}
@@ -409,8 +512,33 @@ export function PrivateLiquidationsPage() {
             <p className="ant-upload-text">Selecciona o arrastra la liquidación</p>
             <p className="ant-upload-hint">PDF de Sanatorio Alemán · Máximo 1 MB</p>
           </Upload.Dragger>
-        </Form.Item>
-        <Form.Item label="Minutos enteros por atención" required>
+          </Form.Item>
+        </>}
+
+        {selectedImportInstitution === 'centro-cebien' && <>
+          <Form.Item label="Cuerpo del correo de Centro Cebien" required>
+            <Input.TextArea
+              value={emailBody}
+              onChange={event => { setEmailBody(event.target.value); setPreview(null); setImportError(null) }}
+              autoSize={{ minRows: 8, maxRows: 16 }}
+              disabled={busy}
+              placeholder="Pega aquí el cuerpo del correo enviado por Centro Cebien."
+            />
+          </Form.Item>
+          <Form.Item label="Mes contable" required>
+            <DatePicker
+              picker="month"
+              value={cebienAccountingMonth}
+              onChange={value => { setCebienAccountingMonth(value?.date(1) ?? null); setPreview(null); setImportError(null) }}
+              format={(value: Dayjs) => monthLabel(value.year(), value.month() + 1)}
+              placeholder="Selecciona el mes contable"
+              disabled={busy}
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+        </>}
+
+        {selectedImportInstitution !== null && <Form.Item label="Minutos enteros por atención" required>
           <Space.Compact style={{ width: '100%' }}>
             <InputNumber
               min={1}
@@ -427,24 +555,30 @@ export function PrivateLiquidationsPage() {
             />
             <Space.Addon>min</Space.Addon>
           </Space.Compact>
-        </Form.Item>
+        </Form.Item>}
       </Form>
       {preview && <>
         <div className="section-card-heading">
           <div><Typography.Text className="eyebrow">PREVISUALIZACIÓN</Typography.Text><Typography.Title level={4}>Revisa los datos leídos</Typography.Title></div>
-          <Tag color="green">RUT cobrador validado</Tag>
+          <Tag color="green">{preview.sourceType === 'pdf' ? 'RUT cobrador validado' : 'Profesional validado'}</Tag>
         </div>
         <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
-          <Descriptions.Item label="Período del PDF">{monthLabel(preview.serviceYear, preview.serviceMonth)} · {preview.fortnight}.ª quincena</Descriptions.Item>
+          <Descriptions.Item label={preview.sourceType === 'pdf' ? 'Período del PDF' : 'Mes de atención'}>
+            {monthLabel(preview.serviceYear, preview.serviceMonth)}{preview.fortnight === null ? '' : ` · ${preview.fortnight}.ª quincena`}
+          </Descriptions.Item>
           <Descriptions.Item label="Mes contable">{monthLabel(preview.accountingYear, preview.accountingMonth)}</Descriptions.Item>
-          <Descriptions.Item label="N.º liquidación">{preview.liquidationNumber}</Descriptions.Item>
-          <Descriptions.Item label="Fecha liquidación">{dayjs(preview.liquidationDate).format('DD-MM-YYYY')}</Descriptions.Item>
+          <Descriptions.Item label="N.º liquidación">{preview.liquidationNumber ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="Fecha liquidación">{preview.liquidationDate ? dayjs(preview.liquidationDate).format('DD-MM-YYYY') : '—'}</Descriptions.Item>
           <Descriptions.Item label="Entidad pagadora">{preview.payerLegalName} · RUT {preview.payerRut}</Descriptions.Item>
-          <Descriptions.Item label="RUT cobrador">{preview.collectorRut}</Descriptions.Item>
+          <Descriptions.Item label="RUT cobrador">{preview.collectorRut ?? '—'}</Descriptions.Item>
+          {preview.reportedProfessionalName && <Descriptions.Item label="Profesional informado">{preview.reportedProfessionalName}</Descriptions.Item>}
           <Descriptions.Item label="Servicio">{preview.paymentService}</Descriptions.Item>
           <Descriptions.Item label="Ejecutor">{preview.executorName || '—'}</Descriptions.Item>
           <Descriptions.Item label="Total servicio">{preview.serviceTotalClp === null ? '—' : formatClp(preview.serviceTotalClp)}</Descriptions.Item>
           <Descriptions.Item label="Atenciones">{preview.attentionCount}</Descriptions.Item>
+          {preview.attentionCountsByService.length > 0 && <Descriptions.Item label="Atenciones por prestación">
+            {preview.attentionCountsByService.map(item => `${item.serviceName}: ${item.count}`).join(' · ')}
+          </Descriptions.Item>}
           <Descriptions.Item label="Bruto">{formatClp(preview.grossTotalClp)}</Descriptions.Item>
           <Descriptions.Item label={`Retención (${formatRate(preview.appliedRetentionPercentage)})`}>{formatClp(preview.retentionTotalClp)}</Descriptions.Item>
           <Descriptions.Item label="Líquido calculado"><Typography.Text strong>{formatClp(preview.netTotalClp)}</Typography.Text></Descriptions.Item>

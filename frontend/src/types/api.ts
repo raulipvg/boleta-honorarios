@@ -128,22 +128,30 @@ export interface RetentionRate {
   percentage: number
 }
 
+export interface CebienAttentionCount {
+  serviceName: string
+  count: number
+}
+
 export interface PrivateLiquidationPreview {
   sha256: string
+  sourceType: 'pdf' | 'email'
   privateInstitutionName: string
   payerEntityId: string
   payerLegalName: string
   payerRut: string
-  collectorRut: string
-  liquidationNumber: string
-  liquidationDate: string
+  collectorRut: string | null
+  reportedProfessionalName: string | null
+  liquidationNumber: string | null
+  liquidationDate: string | null
   serviceYear: number
   serviceMonth: number
   accountingYear: number
   accountingMonth: number
-  fortnight: number
+  fortnight: number | null
   paymentService: string
-  executorName: string
+  executorName: string | null
+  attentionCountsByService: CebienAttentionCount[]
   serviceTotalClp: number | null
   grossTotalClp: number
   appliedRetentionPercentage: number
@@ -153,8 +161,8 @@ export interface PrivateLiquidationPreview {
   reportedAttentionCount: number | null
   minutesPerAttention: number
   totalAttentionMinutes: number
-  fileSizeBytes: number
-  originalFileName: string
+  fileSizeBytes: number | null
+  originalFileName: string | null
 }
 
 export interface PrivateLiquidation {
@@ -163,16 +171,18 @@ export interface PrivateLiquidation {
   payerEntityId: string
   payerLegalName: string
   payerRut: string
-  collectorRut: string
-  liquidationNumber: string
-  liquidationDate: string
+  sourceType: 'pdf' | 'email'
+  collectorRut: string | null
+  reportedProfessionalName: string | null
+  liquidationNumber: string | null
+  liquidationDate: string | null
   serviceYear: number
   serviceMonth: number
   accountingYear: number
   accountingMonth: number
-  fortnight: number
+  fortnight: number | null
   paymentService: string
-  executorName: string
+  executorName: string | null
   serviceTotalClp: number | null
   appliedRetentionPercentage: number
   grossTotalClp: number

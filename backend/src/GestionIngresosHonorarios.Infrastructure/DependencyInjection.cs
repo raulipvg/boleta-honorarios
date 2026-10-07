@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<GestionIngresosHonorarios.Application.Contracts.IApplicationDbContext>(provider =>
             provider.GetRequiredService<AppDbContext>());
         services.AddSingleton<GestionIngresosHonorarios.Application.Contracts.IPrivateLiquidationPdfParser, SanatorioAlemanLiquidationPdfParser>();
+        services.AddSingleton<GestionIngresosHonorarios.Application.Contracts.ICebienEmailParser, CebienEmailParser>();
         services.AddSingleton<GestionIngresosHonorarios.Application.Contracts.IPrivateLiquidationFileStorage, LocalPrivateLiquidationFileStorage>();
         services.AddIdentityCore<ApplicationUser>(options =>
             {

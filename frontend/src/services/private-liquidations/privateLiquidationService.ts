@@ -25,12 +25,37 @@ export const privateLiquidationService = {
     )).data
   },
 
+  async previewCebien(emailBody: string, accountingYear: number, accountingMonth: number, minutesPerAttention: number) {
+    return (await apiClient.post<PrivateLiquidationPreview>('/private-liquidations/cebien/preview', {
+      emailBody,
+      accountingYear,
+      accountingMonth,
+      minutesPerAttention,
+    })).data
+  },
+
+  async importCebien(emailBody: string, accountingYear: number, accountingMonth: number,
+    minutesPerAttention: number, expectedSha256: string, expectedRetentionPercentage: number) {
+    return (await apiClient.post<PrivateLiquidation>('/private-liquidations/cebien', {
+      emailBody,
+      accountingYear,
+      accountingMonth,
+      minutesPerAttention,
+      expectedSha256,
+      expectedRetentionPercentage,
+    })).data
+  },
+
   async list(params: { year?: number; month?: number; professionalId?: string }) {
     return (await apiClient.get<PrivateLiquidation[]>('/private-liquidations', { params })).data
   },
 
   async download(id: string) {
     return (await apiClient.get<Blob>(`/private-liquidations/${id}/file`, { responseType: 'blob' })).data
+  },
+
+  async source(id: string) {
+    return (await apiClient.get<string>(`/private-liquidations/${id}/source`, { responseType: 'text' })).data
   },
 
   async delete(id: string) {

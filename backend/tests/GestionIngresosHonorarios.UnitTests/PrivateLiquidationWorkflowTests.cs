@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using GestionIngresosHonorarios.Application.Common;
 using GestionIngresosHonorarios.Application.Contracts;
 using GestionIngresosHonorarios.Application.DTOs;
@@ -6,6 +7,7 @@ using GestionIngresosHonorarios.Application.Services;
 using GestionIngresosHonorarios.Domain.Entities;
 using GestionIngresosHonorarios.Infrastructure.Data;
 using GestionIngresosHonorarios.Infrastructure.Identity;
+using GestionIngresosHonorarios.Infrastructure.Parsing;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -48,7 +50,7 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
             UpdatedAt = DateTimeOffset.UtcNow
         };
         db.Users.Add(user);
-        var professional = new Professional(user.Id, "Profesional privado de integración");
+        var professional = new Professional(user.Id, "Dra. Alejandra Pezo");
         professional.SetRut("19.091.616-2");
         db.Professionals.Add(professional);
         await db.SaveChangesAsync();
@@ -283,6 +285,87 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ImportsCebienEmailToManualAccountingMonthAndAllowsDistinctMonthlyStatements()
+    {
+        await using var db = CreateContext();
+        var files = new MemoryPrivateLiquidationStorage();
+        var service = CreateService(db, files, new SamplePrivateLiquidationParser());
+        var actor = new ActorContext(UserId, ProfessionalId, IsAdministrator: false, IsProfessional: true);
+        var emailBody = await File.ReadAllTextAsync(
+            Path.Combine(AppContext.BaseDirectory, "CentroCebienEmailExample.txt"));
+
+        var preview = await service.PreviewCebienEmailAsync(
+            actor, emailBody, 2026, 9, 45, CancellationToken.None);
+
+        Assert.Equal("email", preview.SourceType);
+        Assert.Equal("Centro Cebien", preview.PrivateInstitutionName);
+        Assert.Equal("76015783-K", preview.PayerRut);
+        Assert.Equal("DRA. ALEJANDRA PEZO", preview.ReportedProfessionalName);
+        Assert.Equal((short)2026, preview.ServiceYear);
+        Assert.Equal((short)8, preview.ServiceMonth);
+        Assert.Equal((short)2026, preview.AccountingYear);
+        Assert.Equal((short)9, preview.AccountingMonth);
+        Assert.Equal(19, preview.AttentionCount);
+        Assert.Equal(855L, preview.TotalAttentionMinutes);
+        Assert.Equal(418_000, preview.GrossTotalClp);
+        Assert.Equal(63_745, preview.RetentionTotalClp);
+        Assert.Equal(354_255, preview.NetTotalClp);
+
+        var imported = await service.ImportCebienEmailAsync(
+            actor, emailBody, 2026, 9, 45, preview.Sha256, preview.AppliedRetentionPercentage, CancellationToken.None);
+
+        Assert.Equal("email", imported.SourceType);
+        Assert.Equal((short)8, imported.ServiceMonth);
+        Assert.Equal((short)9, imported.AccountingMonth);
+        Assert.Null(imported.CollectorRut);
+        Assert.Null(imported.LiquidationNumber);
+        Assert.Null(imported.LiquidationDate);
+        Assert.Null(imported.Fortnight);
+        Assert.Null(imported.ExecutorName);
+        Assert.Null(imported.ServiceTotalClp);
+        Assert.Empty(files.Files);
+        Assert.Equal(emailBody, await service.ReadEmailSourceAsync(actor, imported.Id, CancellationToken.None));
+        var otherProfessional = new ActorContext(Guid.NewGuid(), Guid.NewGuid(), IsAdministrator: false, IsProfessional: true);
+        var hiddenEmailSource = await Assert.ThrowsAsync<AppError>(
+            () => service.ReadEmailSourceAsync(otherProfessional, imported.Id, CancellationToken.None));
+        Assert.Equal(404, hiddenEmailSource.StatusCode);
+
+        var emailWithFooter = emailBody + "\nCorreo reenviado";
+        var sameBusinessStatement = await Assert.ThrowsAsync<AppError>(() =>
+            service.PreviewCebienEmailAsync(actor, emailWithFooter, 2026, 9, 45, CancellationToken.None));
+        Assert.Equal(409, sameBusinessStatement.StatusCode);
+
+        var secondEmail = Regex.Replace(emailBody, @"(Atenciones\s+Psiquiatricas\s+)19\b",
+            match => $"{match.Groups[1].Value}20", RegexOptions.IgnoreCase);
+        var secondPreview = await service.PreviewCebienEmailAsync(
+            actor, secondEmail, 2026, 9, 45, CancellationToken.None);
+        Assert.Equal(20, secondPreview.AttentionCount);
+        await service.ImportCebienEmailAsync(
+            actor, secondEmail, 2026, 9, 45, secondPreview.Sha256, secondPreview.AppliedRetentionPercentage, CancellationToken.None);
+
+        var period = await db.MonthlyPeriods.SingleAsync(x => x.ProfessionalId == ProfessionalId && x.Year == 2026 && x.Month == 9);
+        Assert.Equal(836_000, period.PrivateGrossTotalClp);
+        Assert.Equal(127_490, period.PrivateRetentionTotalClp);
+        Assert.Equal(708_510, period.PrivateNetTotalClp);
+        Assert.Equal(39, period.PrivateAttentionCount);
+        Assert.Equal(1_755L, period.PrivateAttentionMinutes);
+        Assert.Equal(2, (await service.ListAsync(actor, null, 2026, 9, CancellationToken.None)).Count);
+
+        var dashboard = await new IncomeApplicationService(db).GetDashboardAsync(
+            actor, null, 2026, 2026, null, CancellationToken.None);
+        var dashboardMonth = Assert.Single(dashboard.Months, row => row.Month == 9);
+        Assert.Equal(708_510, dashboardMonth.TotalNetClp);
+        Assert.Contains(dashboard.Institutions, institution => institution.Type == "private" && institution.Name == "Centro Cebien");
+
+        var professional = await db.Professionals.SingleAsync(x => x.Id == ProfessionalId);
+        professional.Rename("Otro profesional");
+        await db.SaveChangesAsync();
+        var mismatchedProfile = await Assert.ThrowsAsync<AppError>(() =>
+            service.PreviewCebienEmailAsync(actor, emailBody, 2026, 10, 45, CancellationToken.None));
+        Assert.Equal(409, mismatchedProfile.StatusCode);
+    }
+
+    [Fact]
     public async Task AccountingPeriodMigrationPreservesExistingMonthlyAssignment()
     {
         await using var db = CreateContext();
@@ -351,7 +434,7 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
 
     private PrivateLiquidationApplicationService CreateService(
         AppDbContext db, IPrivateLiquidationFileStorage storage, IPrivateLiquidationPdfParser parser) =>
-        new(db, parser, storage, NullLogger<PrivateLiquidationApplicationService>.Instance);
+        new(db, parser, new CebienEmailParser(), storage, NullLogger<PrivateLiquidationApplicationService>.Instance);
 
     private AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>()
         .UseNpgsql(_postgres.GetConnectionString())

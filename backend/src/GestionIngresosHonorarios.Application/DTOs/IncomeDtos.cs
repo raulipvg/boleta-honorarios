@@ -38,20 +38,23 @@ public sealed record MonthlyWorkspaceDto(
     IReadOnlyList<PeriodInstitutionDto> Institutions);
 public sealed record PrivateLiquidationPreviewDto(
     string Sha256,
+    string SourceType,
     string PrivateInstitutionName,
     Guid PayerEntityId,
     string PayerLegalName,
     string PayerRut,
-    string CollectorRut,
-    string LiquidationNumber,
-    DateOnly LiquidationDate,
+    string? CollectorRut,
+    string? ReportedProfessionalName,
+    string? LiquidationNumber,
+    DateOnly? LiquidationDate,
     short ServiceYear,
     short ServiceMonth,
     short AccountingYear,
     short AccountingMonth,
-    short Fortnight,
+    short? Fortnight,
     string PaymentService,
-    string ExecutorName,
+    string? ExecutorName,
+    IReadOnlyList<CebienAttentionCount> AttentionCountsByService,
     long? ServiceTotalClp,
     long GrossTotalClp,
     decimal AppliedRetentionPercentage,
@@ -61,8 +64,8 @@ public sealed record PrivateLiquidationPreviewDto(
     long? ReportedAttentionCount,
     int MinutesPerAttention,
     long TotalAttentionMinutes,
-    long FileSizeBytes,
-    string OriginalFileName);
+    long? FileSizeBytes,
+    string? OriginalFileName);
 
 public sealed record PrivateLiquidationDto(
     Guid Id,
@@ -70,16 +73,18 @@ public sealed record PrivateLiquidationDto(
     Guid PayerEntityId,
     string PayerLegalName,
     string PayerRut,
-    string CollectorRut,
-    string LiquidationNumber,
-    DateOnly LiquidationDate,
+    string SourceType,
+    string? CollectorRut,
+    string? ReportedProfessionalName,
+    string? LiquidationNumber,
+    DateOnly? LiquidationDate,
     short ServiceYear,
     short ServiceMonth,
     short AccountingYear,
     short AccountingMonth,
-    short Fortnight,
+    short? Fortnight,
     string PaymentService,
-    string ExecutorName,
+    string? ExecutorName,
     long? ServiceTotalClp,
     decimal AppliedRetentionPercentage,
     long GrossTotalClp,
@@ -90,6 +95,20 @@ public sealed record PrivateLiquidationDto(
     int MinutesPerAttention,
     long TotalAttentionMinutes,
     DateTimeOffset ImportedAt);
+
+public sealed record CebienEmailPreviewRequest(
+    string EmailBody,
+    short AccountingYear,
+    short AccountingMonth,
+    int MinutesPerAttention);
+
+public sealed record CebienEmailImportRequest(
+    string EmailBody,
+    short AccountingYear,
+    short AccountingMonth,
+    int MinutesPerAttention,
+    string ExpectedSha256,
+    decimal ExpectedRetentionPercentage);
 
 public sealed record DashboardInstitutionDto(string Key, string Name, string Type);
 public sealed record DashboardInstitutionValueDto(string InstitutionKey, long? NetTotalClp);
