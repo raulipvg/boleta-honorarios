@@ -59,19 +59,20 @@ public sealed partial class IncomeApplicationService(IApplicationDbContext db) :
         var professionalId = actor.ProfessionalId ?? throw AppError.NotFound();
         var profile = await _db.Professionals.AsNoTracking()
             .Where(x => x.Id == professionalId && x.UserId == actor.UserId)
-            .Select(x => new ProfessionalProfileDto(x.Id, x.UserId, x.Name))
+            .Select(x => new ProfessionalProfileDto(x.Id, x.UserId, x.Name, x.Rut))
             .SingleOrDefaultAsync(cancellationToken);
         return profile ?? throw AppError.NotFound();
     }
 
-    public async Task<ProfessionalProfileDto> UpdateProfileAsync(ActorContext actor, string name, CancellationToken cancellationToken)
+    public async Task<ProfessionalProfileDto> UpdateProfileAsync(ActorContext actor, string name, string? rut, CancellationToken cancellationToken)
     {
         var professionalId = actor.ProfessionalId ?? throw AppError.NotFound();
         var profile = await _db.Professionals.SingleOrDefaultAsync(x => x.Id == professionalId && x.UserId == actor.UserId, cancellationToken)
             ?? throw AppError.NotFound();
         profile.Rename(name);
+        profile.SetRut(rut);
         await _db.SaveChangesAsync(cancellationToken);
-        return new ProfessionalProfileDto(profile.Id, profile.UserId, profile.Name);
+        return new ProfessionalProfileDto(profile.Id, profile.UserId, profile.Name, profile.Rut);
     }
 
     public async Task<IReadOnlyList<ProfessionalInstitutionDto>> GetProfessionalInstitutionsAsync(

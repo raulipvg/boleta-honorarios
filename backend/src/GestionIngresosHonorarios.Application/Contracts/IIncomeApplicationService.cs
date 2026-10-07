@@ -11,7 +11,7 @@ public interface IIncomeApplicationService
     Task<InstitutionDto> CreateInstitutionAsync(string name, CancellationToken cancellationToken);
     Task<InstitutionDto> UpdateInstitutionAsync(Guid institutionId, string name, bool active, CancellationToken cancellationToken);
     Task<ProfessionalProfileDto> GetProfileAsync(ActorContext actor, CancellationToken cancellationToken);
-    Task<ProfessionalProfileDto> UpdateProfileAsync(ActorContext actor, string name, CancellationToken cancellationToken);
+    Task<ProfessionalProfileDto> UpdateProfileAsync(ActorContext actor, string name, string? rut, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProfessionalInstitutionDto>> GetProfessionalInstitutionsAsync(ActorContext actor, Guid? professionalId, CancellationToken cancellationToken);
     Task<ProfessionalInstitutionDto> AddProfessionalInstitutionAsync(ActorContext actor, Guid institutionId, CancellationToken cancellationToken);
     Task<ProfessionalInstitutionDto> CreateAndAddProfessionalInstitutionAsync(ActorContext actor, string name, CancellationToken cancellationToken);
@@ -26,5 +26,5 @@ public interface IIncomeApplicationService
     Task<SavedHourRecordDto> AddHourRecordAsync(ActorContext actor, short year, short month, Guid professionalInstitutionId, int hours, CancellationToken cancellationToken);
     Task<SavedHourRecordDto> UpdateHourRecordAsync(ActorContext actor, Guid recordId, int hours, long expectedVersion, CancellationToken cancellationToken);
     Task<MonthlyWorkspaceDto> DeleteHourRecordAsync(ActorContext actor, Guid recordId, long expectedVersion, CancellationToken cancellationToken);
-    Task<DashboardDto> GetDashboardAsync(ActorContext actor, Guid? professionalId, short fromYear, short toYear, IReadOnlyCollection<Guid>? institutionIds, CancellationToken cancellationToken);
+    Task<DashboardDto> GetDashboardAsync(ActorContext actor, Guid? professionalId, short fromYear, short toYear, IReadOnlyCollection<string>? institutionKeys, CancellationToken cancellationToken);
 }

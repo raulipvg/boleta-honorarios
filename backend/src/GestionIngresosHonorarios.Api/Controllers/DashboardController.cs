@@ -19,11 +19,11 @@ public sealed class DashboardController(
         [FromQuery] short fromYear,
         [FromQuery] short toYear,
         [FromQuery] Guid? professionalId,
-        [FromQuery] Guid[]? institutionIds,
+        [FromQuery] string[]? institutionKeys,
         CancellationToken cancellationToken)
     {
         var actor = await actors.GetAsync(User.GetSubjectId(), cancellationToken);
-        var dashboard = await income.GetDashboardAsync(actor, professionalId, fromYear, toYear, institutionIds, cancellationToken);
+        var dashboard = await income.GetDashboardAsync(actor, professionalId, fromYear, toYear, institutionKeys, cancellationToken);
         if (actor.IsAdministrator)
             logger.LogInformation("Administrador {ActorId} consultó Dashboard del profesional {TargetProfessionalId} entre {FromYear} y {ToYear}",
                 actor.UserId, dashboard.ProfessionalId, fromYear, toYear);

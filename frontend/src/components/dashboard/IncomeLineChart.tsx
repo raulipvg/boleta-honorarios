@@ -32,7 +32,7 @@ export function IncomeLineChart({ data }: { data: DashboardData }) {
     data.months.forEach((month, index) => {
       const value = line.total
         ? month.totalNetClp
-        : month.institutions.find(item => item.institutionId === line.institution?.id)?.netTotalClp ?? null
+        : month.institutions.find(item => item.institutionKey === line.institution?.key)?.netTotalClp ?? null
       if (value === null) {
         open = false
         return
@@ -58,7 +58,7 @@ export function IncomeLineChart({ data }: { data: DashboardData }) {
       {lines.map((line, index) => {
         const path = pathFor(line)
         if (!path) return null
-        return <path key={line.total ? 'total' : line.institution?.id ?? index} d={path} fill="none" stroke={line.color}
+        return <path key={line.total ? 'total' : line.institution?.key ?? index} d={path} fill="none" stroke={line.color}
           strokeWidth={line.total ? 3.5 : 2} strokeLinecap="round" strokeLinejoin="round" opacity={line.total ? 1 : 0.78} />
       })}
       {data.months.map((month, index) => index % Math.max(1, Math.ceil(data.months.length / 18)) === 0 && (
@@ -68,7 +68,7 @@ export function IncomeLineChart({ data }: { data: DashboardData }) {
       ))}
     </svg>
     <div className="chart-legend">
-      {lines.map((line, index) => <span key={line.total ? 'total' : line.institution?.id ?? index}>
+      {lines.map((line, index) => <span key={line.total ? 'total' : line.institution?.key ?? index}>
         <i style={{ backgroundColor: line.color }} />{line.total ? 'Total mensual' : line.institution?.name}
       </span>)}
     </div>

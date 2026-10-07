@@ -1,7 +1,9 @@
 using GestionIngresosHonorarios.Application.Contracts;
 using GestionIngresosHonorarios.Infrastructure.Data;
 using GestionIngresosHonorarios.Infrastructure.Identity;
+using GestionIngresosHonorarios.Infrastructure.Parsing;
 using GestionIngresosHonorarios.Infrastructure.Security;
+using GestionIngresosHonorarios.Infrastructure.Storage;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -19,6 +21,8 @@ public static class DependencyInjection
             npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)));
         services.AddScoped<GestionIngresosHonorarios.Application.Contracts.IApplicationDbContext>(provider =>
             provider.GetRequiredService<AppDbContext>());
+        services.AddSingleton<GestionIngresosHonorarios.Application.Contracts.IPrivateLiquidationPdfParser, SanatorioAlemanLiquidationPdfParser>();
+        services.AddSingleton<GestionIngresosHonorarios.Application.Contracts.IPrivateLiquidationFileStorage, LocalPrivateLiquidationFileStorage>();
         services.AddIdentityCore<ApplicationUser>(options =>
             {
                 options.User.RequireUniqueEmail = false;

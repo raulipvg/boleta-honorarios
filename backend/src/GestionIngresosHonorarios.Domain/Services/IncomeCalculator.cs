@@ -1,11 +1,21 @@
 namespace GestionIngresosHonorarios.Domain.Services;
 
 public sealed record IncomeTotals(long Hours, long GrossClp, long RetentionClp, long NetClp);
+public sealed record GrossIncomeTotals(long GrossClp, long RetentionClp, long NetClp);
 
 public static class IncomeCalculator
 {
     // JSON numbers are represented as IEEE-754 doubles in the browser; this bound preserves exact CLP integers.
     public const long MaxExactInteger = 9_007_199_254_740_991;
+
+    public static GrossIncomeTotals CalculateFromGross(long grossClp, decimal retentionPercentage)
+    {
+        if (grossClp is < 0 or > MaxExactInteger) throw new ArgumentOutOfRangeException(nameof(grossClp));
+        if (retentionPercentage is < 0 or > 100) throw new ArgumentOutOfRangeException(nameof(retentionPercentage));
+
+        var retention = checked((long)decimal.Round(grossClp * retentionPercentage / 100m, 0, MidpointRounding.AwayFromZero));
+        return new GrossIncomeTotals(grossClp, retention, checked(grossClp - retention));
+    }
 
     public static IncomeTotals Calculate(IEnumerable<int> hourEntries, long hourlyRateClp, decimal retentionPercentage)
     {

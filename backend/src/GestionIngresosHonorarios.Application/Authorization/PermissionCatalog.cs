@@ -18,6 +18,9 @@ public static class PermissionCatalog
     public const string HoursManage = "hours:record:manage";
     public const string DashboardRead = "dashboard:income:read";
     public const string RetentionRead = "configuration:retention:read";
+    public const string PrivateLiquidationsRead = "private-liquidations:read";
+    public const string PrivateLiquidationsCreate = "private-liquidations:create";
+    public const string PrivateLiquidationsDelete = "private-liquidations:delete";
 
     private static readonly IReadOnlyDictionary<string, string[]> RolePermissions = new Dictionary<string, string[]>(StringComparer.Ordinal)
     {
@@ -25,12 +28,14 @@ public static class PermissionCatalog
         [
             UsersRead, UsersCreate, UsersResetPassword,
             InstitutionsRead, InstitutionsManage,
-            RelationshipsRead, RatesRead, PeriodsRead, DashboardRead, RetentionRead
+            RelationshipsRead, RatesRead, PeriodsRead, DashboardRead, RetentionRead,
+            PrivateLiquidationsRead
         ],
         ["PROFESIONAL"] =
         [
             InstitutionsRead, ProfileRead, ProfileUpdate, RelationshipsRead, RelationshipsManage,
-            RatesRead, RatesCreate, PeriodsRead, PeriodsManage, HoursManage, DashboardRead, RetentionRead
+            RatesRead, RatesCreate, PeriodsRead, PeriodsManage, HoursManage, DashboardRead, RetentionRead,
+            PrivateLiquidationsRead, PrivateLiquidationsCreate, PrivateLiquidationsDelete
         ]
     };
 

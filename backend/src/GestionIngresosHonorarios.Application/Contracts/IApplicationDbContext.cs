@@ -16,6 +16,10 @@ public interface IApplicationDbContext
     DbSet<PeriodInstitution> PeriodInstitutions { get; }
     DbSet<HourRecord> HourRecords { get; }
     DbSet<AnnualRetentionRate> AnnualRetentionRates { get; }
+    DbSet<PrivateInstitution> PrivateInstitutions { get; }
+    DbSet<PrivatePayerEntity> PrivatePayerEntities { get; }
+    DbSet<PrivatePaymentRule> PrivatePaymentRules { get; }
+    DbSet<PrivateLiquidation> PrivateLiquidations { get; }
     DatabaseFacade Database { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

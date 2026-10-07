@@ -13,6 +13,7 @@ export function AppShell() {
     const entries = [
       { key: '/dashboard', label: 'Dashboard', permission: PermissionCodes.dashboardRead },
       { key: '/month', label: 'Mes de trabajo', permission: PermissionCodes.periodsRead },
+      { key: '/private-liquidations', label: 'Liquidaciones privadas', permission: PermissionCodes.privateLiquidationsRead },
       { key: '/institutions', label: 'Instituciones y tarifas', permission: PermissionCodes.relationshipsRead },
       { key: '/settings', label: 'Configuración', permission: PermissionCodes.retentionRead },
       { key: '/admin/users', label: 'Cuentas', permission: PermissionCodes.usersRead },

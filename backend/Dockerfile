@@ -14,7 +14,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /home/app/.aspnet/DataProtection-Keys && chown -R app:app /home/app/.aspnet
+RUN mkdir -p /home/app/.aspnet/DataProtection-Keys /home/app/private-liquidations \
+    && chown -R app:app /home/app/.aspnet /home/app/private-liquidations
 COPY --from=build /app/publish ./
 ENV ASPNETCORE_URLS=http://+:5000
 EXPOSE 5000

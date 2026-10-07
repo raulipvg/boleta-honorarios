@@ -42,6 +42,18 @@ public sealed class IncomeCalculatorTests
         Assert.NotEqual(1, first.RetentionClp + second.RetentionClp);
     }
 
+    [Fact]
+    public void CalculatesPrivateLiquidationRetentionPerPdfFromAuthoritativeGross()
+    {
+        var services = IncomeCalculator.CalculateFromGross(616_988, 15.25m);
+        var clinic = IncomeCalculator.CalculateFromGross(73_460, 15.25m);
+
+        Assert.Equal(new GrossIncomeTotals(616_988, 94_091, 522_897), services);
+        Assert.Equal(new GrossIncomeTotals(73_460, 11_203, 62_257), clinic);
+        Assert.Equal(105_294, services.RetentionClp + clinic.RetentionClp);
+        Assert.Equal(585_154, services.NetClp + clinic.NetClp);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

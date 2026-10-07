@@ -98,7 +98,7 @@ Regla asociada a una institución y a un formato de liquidación. La primera reg
 
 ### 5.6 Liquidación privada
 
-Registro asociado a un PDF, un profesional, una entidad pagadora y un período mensual. Guarda el PDF original y los datos extraídos o ingresados para ese documento. El RUT del cobrador extraído se valida contra el perfil profesional. Una liquidación puede quedar pendiente y no confirmada si el pagador no está reconocido o si falla una validación.
+Registro asociado a un PDF, un profesional, una entidad pagadora y un período mensual. Guarda el PDF original y los datos extraídos o ingresados para ese documento. El RUT del cobrador extraído se valida contra el perfil profesional. Solo se crea el registro confirmado después de superar todas las validaciones; un PDF rechazado no deja un registro pendiente ni guarda el original.
 
 ### 5.7 Atención
 
@@ -215,7 +215,7 @@ Antes de confirmar una liquidación, el sistema:
 
 - Comprueba que reconoce el formato.
 - Valida formato y dígito verificador del RUT del cobrador y exige coincidencia normalizada con el RUT del profesional autenticado.
-- Reconoce el RUT pagador mediante el catálogo de pagadores permitidos de Sanatorio Alemán. Un RUT desconocido queda sin clasificar y requiere revisión; no crea una nueva institución automáticamente.
+- Reconoce el RUT pagador mediante el catálogo de pagadores permitidos de Sanatorio Alemán. Un RUT desconocido rechaza la importación; no crea una institución ni guarda una carga pendiente. El pagador se agrega mediante migración/seed y luego se vuelve a cargar el PDF.
 - Compara la cantidad de filas con el conteo indicado en el cierre del PDF, cuando está disponible.
 - Usa `Total Liquidación` como bruto oficial; compara el valor con la suma de `Valor Pago`. Si aparecen uno o más subtotales `Total Servicio`, suma los subtotales y compara el resultado con `Total Liquidación`.
 - Bloquea tanto un hash ya importado como una clave de negocio duplicada basada en profesional, RUT pagador, número de liquidación y año/mes/quincena del período.
@@ -345,7 +345,7 @@ Un mes sin información de ninguna modalidad aparece como un período sin datos.
 - **RF-16:** Conservar el PDF original en almacenamiento persistente del contenedor Docker del backend y guardar su referencia y hash en la liquidación.
 - **RF-17:** Identificar filas válidas de atención mediante su N.º de atención; contar esas filas y sumar sus valores `Valor Pago` para validar el bruto leído.
 - **RF-18:** Tratar `Total Liquidación` como el bruto autoritativo y compararlo con la suma de `Valor Pago` y con `Total Servicio` o sus subtotales cuando existan. Una discrepancia bloquea la confirmación.
-- **RF-19:** Reconocer Sanatorio Alemán por los RUT pagadores configurados. Un RUT desconocido queda sin clasificar y requiere revisión, sin crear automáticamente una institución.
+- **RF-19:** Reconocer Sanatorio Alemán por los RUT pagadores configurados. Un RUT desconocido rechaza la importación; no se crea una institución ni se guarda una carga pendiente. El pagador se agrega mediante migración/seed y luego se vuelve a cargar el PDF.
 - **RF-20:** Detectar duplicados por hash y por clave de negocio (profesional, RUT pagador, número de liquidación y año/mes/quincena). Un conflicto bloquea la nueva carga hasta que el propietario elimine la anterior.
 - **RF-21:** Permitir que solo el profesional propietario elimine su liquidación; borrar el archivo original y los datos asociados y actualizar los agregados mensuales transaccionalmente.
 - **RF-22:** Permitir descargar el PDF solo al profesional propietario y a administradores autorizados, mediante validación de rol y propiedad en backend.
@@ -424,7 +424,7 @@ El parser cuenta únicamente filas con un N.º de atención válido y contrasta 
 
 ### CA-14 — Reconocer institución y cobrador
 
-Los RUT pagadores `76389986-1` y `88611600-4` se clasifican bajo Sanatorio Alemán. Un RUT pagador desconocido no crea una institución y deja la carga pendiente de revisión. El RUT del cobrador debe coincidir con el del profesional autenticado.
+Los RUT pagadores `76389986-1` y `88611600-4` se clasifican bajo Sanatorio Alemán. Un RUT pagador desconocido rechaza la importación y no crea una institución ni una carga pendiente. Después de agregar el pagador mediante migración/seed, el profesional puede volver a cargar el PDF. El RUT del cobrador debe coincidir con el del profesional autenticado.
 
 ### CA-15 — Bloquear duplicados y corregir una carga
 
@@ -477,7 +477,7 @@ Todas las filas de atención válidas de los servicios incluidos en la plantilla
 - **RN-19:** El conteo de atenciones se obtiene de filas con N.º de atención válido; no representa pacientes únicos.
 - **RN-20:** `Total Liquidación` es el bruto autoritativo. La suma de `Valor Pago` y los subtotales disponibles se usan para validar, no para sustituir silenciosamente el total del PDF.
 - **RN-21:** Si la validación del conteo, importes, RUT o formato falla, la importación no se confirma y sus campos extraídos no pueden corregirse manualmente.
-- **RN-22:** Los RUT pagadores reconocidos se asocian a Sanatorio Alemán. Un RUT desconocido no crea otra institución y requiere revisión antes de confirmar.
+- **RN-22:** Los RUT pagadores reconocidos se asocian a Sanatorio Alemán. Un RUT desconocido se rechaza; el RUT se agrega mediante migración/seed antes de volver a cargar el PDF.
 - **RN-23:** Una liquidación se considera duplicada por hash o por coincidencia de profesional, RUT pagador, número de liquidación y año/mes/quincena del período.
 - **RN-24:** Solo el profesional propietario puede eliminar una liquidación. La eliminación borra el PDF y sus datos, y actualiza los agregados del mes.
 - **RN-25:** El profesional propietario y los administradores autorizados pueden descargar el PDF mediante una ruta protegida en backend.
@@ -489,7 +489,5 @@ Todas las filas de atención válidas de los servicios incluidos en la plantilla
 - **RN-31:** El dashboard no calcula ni presenta el promedio mensual de duración de atención.
 
 ## 15. Decisiones pendientes
-
-- Definir quién resuelve la revisión de un RUT pagador desconocido y cómo se registra su asociación con Sanatorio Alemán antes de confirmar la liquidación.
 
 Las reglas de otras instituciones privadas y el soporte OCR para documentos escaneados son futuras ampliaciones, fuera de esta versión.

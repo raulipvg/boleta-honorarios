@@ -9,7 +9,7 @@ import { formatRate } from '../utils/format'
 import type { RetentionRate } from '../types/api'
 import { PermissionCodes } from '../constants/authorization'
 
-interface ProfileForm { name: string }
+interface ProfileForm { name: string; rut?: string | null }
 interface PasswordForm { currentPassword: string; newPassword: string; confirmPassword: string }
 
 export function SettingsPage() {
@@ -27,13 +27,16 @@ export function SettingsPage() {
 
   useEffect(() => {
     const jobs: Promise<unknown>[] = [retentionService.list().then(setRetentionRates)]
-    if (canReadProfile) jobs.push(profileService.get().then(profile => { setProfileName(profile.name); form.setFieldsValue({ name: profile.name }) }))
+    if (canReadProfile) jobs.push(profileService.get().then(profile => {
+      setProfileName(profile.name)
+      form.setFieldsValue({ name: profile.name, rut: profile.rut ?? '' })
+    }))
     Promise.all(jobs).catch(requestError => setError(getApiErrorMessage(requestError))).finally(() => setLoading(false))
   }, [canReadProfile, form])
 
-  const updateProfile = async ({ name }: ProfileForm) => {
+  const updateProfile = async ({ name, rut }: ProfileForm) => {
     try {
-      await profileService.update(name)
+      await profileService.update(name, rut?.trim() || null)
       setProfileName(name)
       message.success('Perfil actualizado.')
     } catch (requestError) { setError(getApiErrorMessage(requestError)) }
@@ -68,6 +71,14 @@ export function SettingsPage() {
             <div className="section-card-heading"><div><Typography.Text className="eyebrow">PERFIL PROFESIONAL</Typography.Text><Typography.Title level={3}>Tus datos</Typography.Title></div></div>
             <Form form={form} layout="vertical" onFinish={updateProfile} requiredMark={false}>
               <Form.Item name="name" label="Nombre del perfil" rules={[{ required: true, whitespace: true }, { max: 200 }]}><Input disabled={!canEditProfile} maxLength={200} /></Form.Item>
+              <Form.Item
+                name="rut"
+                label="RUT profesional"
+                extra="Necesario para importar liquidaciones privadas."
+                rules={[{ max: 12, message: 'El RUT no puede superar 12 caracteres.' }]}
+              >
+                <Input disabled={!canEditProfile} maxLength={12} placeholder="12.345.678-9" autoComplete="off" />
+              </Form.Item>
               {canEditProfile && <Row justify="end"><Button type="primary" htmlType="submit">Guardar perfil</Button></Row>}
             </Form>
           </Card>

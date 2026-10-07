@@ -24,42 +24,66 @@ public sealed partial class IncomeApplicationService
         Guid? professionalId,
         short fromYear,
         short toYear,
-        IReadOnlyCollection<Guid>? institutionIds,
+        IReadOnlyCollection<string>? institutionKeys,
         CancellationToken cancellationToken)
     {
         if (fromYear < 1900 || toYear < fromYear || toYear - fromYear > 50)
             throw AppError.BadRequest("El intervalo de años solicitado no es válido.");
         var ownerId = ResolveProfessionalId(actor, professionalId);
-        var relations = await (
+
+        var publicRelations = await (
             from relation in _db.ProfessionalInstitutions.AsNoTracking()
             join institution in _db.PublicInstitutions.AsNoTracking() on relation.PublicInstitutionId equals institution.Id
             where relation.ProfessionalId == ownerId
-            select new { RelationId = relation.Id, institution.Id, institution.Name }
+            select new { relation.Id, InstitutionId = institution.Id, institution.Name }
         ).ToListAsync(cancellationToken);
 
-        var selectedRelations = relations;
-        if (institutionIds is { Count: > 0 })
+        var privateInstitutionRows = await (
+            from liquidation in _db.PrivateLiquidations.AsNoTracking()
+            join institution in _db.PrivateInstitutions.AsNoTracking() on liquidation.PrivateInstitutionId equals institution.Id
+            where liquidation.ProfessionalId == ownerId
+            select new { institution.Id, institution.Name }
+        ).Distinct().ToListAsync(cancellationToken);
+
+        var columns = publicRelations
+            .Select(x => new DashboardInstitutionDto($"public:{x.Id:D}", x.Name, "public"))
+            .Concat(privateInstitutionRows.Select(x => new DashboardInstitutionDto($"private:{x.Id:D}", x.Name, "private")))
+            .OrderBy(x => x.Name, StringComparer.CurrentCulture)
+            .ThenBy(x => x.Type, StringComparer.Ordinal)
+            .ToList();
+
+        if (institutionKeys is { Count: > 0 })
         {
-            var requested = institutionIds.ToHashSet();
-            if (requested.Any(id => relations.All(x => x.Id != id))) throw AppError.NotFound();
-            selectedRelations = relations.Where(x => requested.Contains(x.Id)).ToList();
+            var requested = institutionKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (requested.Any(key => columns.All(column => !string.Equals(column.Key, key, StringComparison.OrdinalIgnoreCase))))
+                throw AppError.NotFound();
+            columns = columns.Where(column => requested.Contains(column.Key)).ToList();
         }
 
-        var columns = selectedRelations
-            .Select(x => new DashboardInstitutionDto(x.Id, x.RelationId, x.Name))
-            .OrderBy(x => x.Name, StringComparer.CurrentCulture)
-            .ToList();
         var periods = await _db.MonthlyPeriods.AsNoTracking()
             .Where(x => x.ProfessionalId == ownerId && x.Year >= fromYear && x.Year <= toYear)
             .ToListAsync(cancellationToken);
         var periodIds = periods.Select(x => x.Id).ToArray();
-        var values = await _db.PeriodInstitutions.AsNoTracking()
+        var publicValues = await _db.PeriodInstitutions.AsNoTracking()
             .Where(x => periodIds.Contains(x.PeriodId))
             .Select(x => new { x.PeriodId, x.ProfessionalInstitutionId, x.NetTotalClp })
             .ToListAsync(cancellationToken);
+        var privateValues = await _db.PrivateLiquidations.AsNoTracking()
+            .Where(x => periodIds.Contains(x.PeriodId))
+            .GroupBy(x => new { x.PeriodId, x.PrivateInstitutionId })
+            .Select(group => new
+            {
+                group.Key.PeriodId,
+                group.Key.PrivateInstitutionId,
+                NetTotalClp = group.Sum(x => x.NetTotalClp)
+            })
+            .ToListAsync(cancellationToken);
+
         var periodsByDate = periods.ToDictionary(x => (x.Year, x.Month));
-        var valuesByPeriod = values.GroupBy(x => x.PeriodId)
+        var publicByPeriod = publicValues.GroupBy(x => x.PeriodId)
             .ToDictionary(x => x.Key, x => x.ToDictionary(y => y.ProfessionalInstitutionId, y => y.NetTotalClp));
+        var privateByPeriod = privateValues.GroupBy(x => x.PeriodId)
+            .ToDictionary(x => x.Key, x => x.ToDictionary(y => y.PrivateInstitutionId, y => y.NetTotalClp));
 
         var rows = new List<DashboardMonthDto>();
         for (var year = (int)fromYear; year <= toYear; year++)
@@ -70,21 +94,55 @@ public sealed partial class IncomeApplicationService
                 IReadOnlyList<DashboardInstitutionValueDto> monthValues;
                 if (!exists)
                 {
-                    monthValues = columns.Select(x => new DashboardInstitutionValueDto(x.Id, null)).ToList();
+                    monthValues = columns.Select(x => new DashboardInstitutionValueDto(x.Key, null)).ToList();
                 }
                 else
                 {
-                    var institutionValues = valuesByPeriod.GetValueOrDefault(period!.Id);
-                    monthValues = columns.Select(x => new DashboardInstitutionValueDto(
-                        x.Id,
-                        institutionValues is not null && institutionValues.TryGetValue(x.ProfessionalInstitutionId, out var net) ? net : 0L)).ToList();
+                    var publicValuesForPeriod = publicByPeriod.GetValueOrDefault(period!.Id);
+                    var privateValuesForPeriod = privateByPeriod.GetValueOrDefault(period!.Id);
+                    monthValues = columns.Select(column =>
+                    {
+                        if (column.Type == "public")
+                        {
+                            var relationId = Guid.Parse(column.Key["public:".Length..]);
+                            return new DashboardInstitutionValueDto(column.Key,
+                                publicValuesForPeriod is not null && publicValuesForPeriod.TryGetValue(relationId, out var publicNetValue) ? publicNetValue : 0L);
+                        }
+
+                        var privateId = Guid.Parse(column.Key["private:".Length..]);
+                        return new DashboardInstitutionValueDto(column.Key,
+                            privateValuesForPeriod is not null && privateValuesForPeriod.TryGetValue(privateId, out var privateNetValue) ? privateNetValue : 0L);
+                    }).ToList();
                 }
+
+                long? publicGross = exists ? period!.GrossTotalClp : null;
+                long? publicRetention = exists ? period!.RetentionTotalClp : null;
+                long? publicNet = exists ? period!.NetTotalClp : null;
+                long? privateGross = exists ? period!.PrivateGrossTotalClp : null;
+                long? privateRetention = exists ? period!.PrivateRetentionTotalClp : null;
+                long? privateNet = exists ? period!.PrivateNetTotalClp : null;
+                long? privateAttentions = exists ? period!.PrivateAttentionCount : null;
+                decimal? privateMinutes = exists ? period!.PrivateAttentionMinutes : null;
+                var combinedNet = exists
+                    ? checked(period!.NetTotalClp + period.PrivateNetTotalClp)
+                    : (long?)null;
+                if (combinedNet.HasValue && combinedNet.Value > GestionIngresosHonorarios.Domain.Services.IncomeCalculator.MaxExactInteger)
+                    throw new OverflowException("El líquido combinado excede el rango entero exacto del cliente.");
 
                 rows.Add(new DashboardMonthDto(
                     (short)year,
                     month,
                     exists,
-                    exists ? period!.NetTotalClp : null,
+                    combinedNet,
+                    exists ? period!.TotalHours : null,
+                    publicGross,
+                    publicRetention,
+                    publicNet,
+                    privateGross,
+                    privateRetention,
+                    privateNet,
+                    privateAttentions,
+                    privateMinutes,
                     monthValues));
             }
         }

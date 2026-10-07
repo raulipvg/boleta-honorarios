@@ -1,23 +1,19 @@
-using GestionIngresosHonorarios.Domain.Services;
-
 namespace GestionIngresosHonorarios.Domain.Entities;
 
-public sealed class Professional
+public sealed class PrivateInstitution
 {
-    private Professional() { }
+    private PrivateInstitution() { }
 
     public Guid Id { get; private set; }
-    public Guid UserId { get; private set; }
     public string Name { get; private set; } = string.Empty;
-    public string? Rut { get; private set; }
+    public bool Active { get; private set; } = true;
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    public Professional(Guid userId, string name)
+    public PrivateInstitution(string name)
     {
-        if (userId == Guid.Empty) throw new ArgumentException("El usuario es obligatorio.", nameof(userId));
-        UserId = userId;
         Rename(name);
+        CreatedAt = UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     public void Rename(string name)
@@ -25,12 +21,6 @@ public sealed class Professional
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 200)
             throw new ArgumentException("El nombre debe contener entre 1 y 200 caracteres.", nameof(name));
         Name = name.Trim();
-        UpdatedAt = DateTimeOffset.UtcNow;
-    }
-
-    public void SetRut(string? rut)
-    {
-        Rut = string.IsNullOrWhiteSpace(rut) ? null : ChileanRut.NormalizeAndValidate(rut);
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 }

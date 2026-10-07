@@ -3,7 +3,7 @@ namespace GestionIngresosHonorarios.Application.DTOs;
 public sealed record InstitutionDto(Guid Id, string Name, bool Active);
 public sealed record RetentionRateDto(short Year, decimal Percentage);
 public sealed record ProfessionalSummaryDto(Guid Id, string Name);
-public sealed record ProfessionalProfileDto(Guid Id, Guid UserId, string Name);
+public sealed record ProfessionalProfileDto(Guid Id, Guid UserId, string Name, string? Rut);
 public sealed record HourlyRateDto(short Year, int Version, long HourlyRateClp, DateTimeOffset CreatedAt);
 public sealed record ProfessionalInstitutionDto(Guid Id, Guid PublicInstitutionId, string InstitutionName, bool Active, IReadOnlyList<HourlyRateDto> Rates);
 public sealed record HourRecordDto(Guid Id, int Hours, int Order, long Version);
@@ -34,9 +34,79 @@ public sealed record MonthlyWorkspaceDto(
     long GrossTotalClp,
     long RetentionTotalClp,
     long NetTotalClp,
+    long PrivateGrossTotalClp,
+    long PrivateRetentionTotalClp,
+    long PrivateNetTotalClp,
+    long PrivateAttentionCount,
+    decimal PrivateAttentionMinutes,
     long Version,
     IReadOnlyList<PeriodInstitutionDto> Institutions);
-public sealed record DashboardInstitutionDto(Guid Id, Guid ProfessionalInstitutionId, string Name);
-public sealed record DashboardInstitutionValueDto(Guid InstitutionId, long? NetTotalClp);
-public sealed record DashboardMonthDto(short Year, short Month, bool PeriodExists, long? TotalNetClp, IReadOnlyList<DashboardInstitutionValueDto> Institutions);
+public sealed record PrivateLiquidationPreviewDto(
+    string Sha256,
+    string PrivateInstitutionName,
+    Guid PayerEntityId,
+    string PayerLegalName,
+    string PayerRut,
+    string CollectorRut,
+    string LiquidationNumber,
+    DateOnly LiquidationDate,
+    short Year,
+    short Month,
+    short Fortnight,
+    string PaymentService,
+    string ExecutorName,
+    long? ServiceTotalClp,
+    long GrossTotalClp,
+    decimal AppliedRetentionPercentage,
+    long RetentionTotalClp,
+    long NetTotalClp,
+    long AttentionCount,
+    long? ReportedAttentionCount,
+    decimal MinutesPerAttention,
+    decimal TotalAttentionMinutes,
+    long FileSizeBytes,
+    string OriginalFileName);
+
+public sealed record PrivateLiquidationDto(
+    Guid Id,
+    string PrivateInstitutionName,
+    Guid PayerEntityId,
+    string PayerLegalName,
+    string PayerRut,
+    string CollectorRut,
+    string LiquidationNumber,
+    DateOnly LiquidationDate,
+    short Year,
+    short Month,
+    short Fortnight,
+    string PaymentService,
+    string ExecutorName,
+    long? ServiceTotalClp,
+    decimal AppliedRetentionPercentage,
+    long GrossTotalClp,
+    long RetentionTotalClp,
+    long NetTotalClp,
+    long AttentionCount,
+    long? ReportedAttentionCount,
+    decimal MinutesPerAttention,
+    decimal TotalAttentionMinutes,
+    DateTimeOffset ImportedAt);
+
+public sealed record DashboardInstitutionDto(string Key, string Name, string Type);
+public sealed record DashboardInstitutionValueDto(string InstitutionKey, long? NetTotalClp);
+public sealed record DashboardMonthDto(
+    short Year,
+    short Month,
+    bool PeriodExists,
+    long? TotalNetClp,
+    long? PublicHours,
+    long? PublicGrossClp,
+    long? PublicRetentionClp,
+    long? PublicNetClp,
+    long? PrivateGrossClp,
+    long? PrivateRetentionClp,
+    long? PrivateNetClp,
+    long? PrivateAttentionCount,
+    decimal? PrivateAttentionMinutes,
+    IReadOnlyList<DashboardInstitutionValueDto> Institutions);
 public sealed record DashboardDto(Guid ProfessionalId, short FromYear, short ToYear, IReadOnlyList<DashboardInstitutionDto> Institutions, IReadOnlyList<DashboardMonthDto> Months);

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Card, Empty, Select, Skeleton, Table, Tag, Typography, type TableColumnsType } from 'antd'
+import { Alert, Card, Empty, Select, Skeleton, Space, Table, Tag, Typography, type TableColumnsType } from 'antd'
+import { Link } from 'react-router-dom'
 import { dashboardService } from '../services/dashboard/dashboardService'
 import { professionalService } from '../services/professionals/professionalService'
-import { professionalInstitutionService } from '../services/professional-institutions/professionalInstitutionService'
 import { getApiErrorMessage } from '../services/apiClient'
 import { formatClp, formatParticipation } from '../utils/format'
 import { useAuth } from '../hooks/useAuth'
@@ -18,8 +18,7 @@ export function DashboardPage() {
   const [toYear, setToYear] = useState(currentYear)
   const [professionalId, setProfessionalId] = useState<string>()
   const [professionals, setProfessionals] = useState<ProfessionalSummary[]>([])
-  const [availableInstitutions, setAvailableInstitutions] = useState<{ id: string; name: string }[]>([])
-  const [institutionIds, setInstitutionIds] = useState<string[]>([])
+  const [selectedInstitutionKeys, setSelectedInstitutionKeys] = useState<string[]>([])
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(!isAdmin)
   const [error, setError] = useState<string | null>(null)
@@ -30,34 +29,29 @@ export function DashboardPage() {
   }, [isAdmin])
 
   useEffect(() => {
-    if (isAdmin && !professionalId) {
-      return
-    }
-    professionalInstitutionService.list(isAdmin ? professionalId : undefined)
-      .then(relations => setAvailableInstitutions(relations.map(relation => ({ id: relation.publicInstitutionId, name: relation.institutionName }))))
-      .catch(requestError => setError(getApiErrorMessage(requestError)))
-  }, [isAdmin, professionalId])
-
-  useEffect(() => {
-    if (isAdmin && !professionalId) {
-      return
-    }
+    if (isAdmin && !professionalId) return
     let active = true
-    dashboardService.dashboard({ fromYear, toYear, professionalId: isAdmin ? professionalId : undefined, institutionIds })
+    dashboardService.dashboard({ fromYear, toYear, professionalId: isAdmin ? professionalId : undefined })
       .then(result => { if (active) { setError(null); setData(result) } })
       .catch(requestError => { if (active) setError(getApiErrorMessage(requestError)) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [fromYear, toYear, professionalId, institutionIds, isAdmin])
+  }, [fromYear, toYear, professionalId, isAdmin])
 
   const visibleMonths = useMemo(() => data?.months.filter(month => month.periodExists) ?? [], [data?.months])
+  const visibleInstitutions = useMemo(() => {
+    if (selectedInstitutionKeys.length === 0) return data?.institutions ?? []
+    const selected = new Set(selectedInstitutionKeys)
+    return (data?.institutions ?? []).filter(institution => selected.has(institution.key))
+  }, [data?.institutions, selectedInstitutionKeys])
   const visibleMonthsPerYear = useMemo(() => {
     const counts = new Map<number, number>()
     for (const month of visibleMonths)
       counts.set(month.year, (counts.get(month.year) ?? 0) + 1)
     return counts
   }, [visibleMonths])
-  const chartData = useMemo(() => data ? { ...data, months: visibleMonths } : null, [data, visibleMonths])
+  const chartData = useMemo(() => data ? { ...data, institutions: visibleInstitutions, months: visibleMonths } : null,
+    [data, visibleInstitutions, visibleMonths])
 
   const columns = useMemo<TableColumnsType<DashboardMonth>>(() => {
     const base: TableColumnsType<DashboardMonth> = [
@@ -71,27 +65,53 @@ export function DashboardPage() {
         render: value => <Typography.Text strong>{value}</Typography.Text>,
       },
       { title: 'Mes', dataIndex: 'month', key: 'month', width: 132, fixed: 'left', render: value => monthName(value) },
+      {
+        title: 'Ingresos públicos',
+        children: [
+          { title: 'Horas', dataIndex: 'publicHours', key: 'public-hours', width: 105, render: value => value === null ? '—' : `${value} h` },
+          { title: 'Bruto', dataIndex: 'publicGrossClp', key: 'public-gross', width: 145, render: renderClp },
+          { title: 'Retención', dataIndex: 'publicRetentionClp', key: 'public-retention', width: 145, render: renderClp },
+          { title: 'Líquido est.', dataIndex: 'publicNetClp', key: 'public-net', width: 145, render: renderClp },
+        ],
+      },
+      {
+        title: 'Ingresos privados',
+        children: [
+          { title: 'Bruto', dataIndex: 'privateGrossClp', key: 'private-gross', width: 145, render: renderClp },
+          { title: 'Retención', dataIndex: 'privateRetentionClp', key: 'private-retention', width: 145, render: renderClp },
+          { title: 'Líquido', dataIndex: 'privateNetClp', key: 'private-net', width: 145, render: renderClp },
+          { title: 'Atenciones', dataIndex: 'privateAttentionCount', key: 'private-attentions', width: 115, render: value => value === null ? '—' : value },
+          { title: 'Minutos', dataIndex: 'privateAttentionMinutes', key: 'private-minutes', width: 115, render: value => value === null ? '—' : formatMinutes(value) },
+        ],
+      },
     ]
-    const institutionColumns: TableColumnsType<DashboardMonth> = (data?.institutions ?? []).map(institution => ({
-      title: institution.name,
-      key: institution.id,
+    const institutionColumns: TableColumnsType<DashboardMonth> = visibleInstitutions.map(institution => ({
+      title: <Space size={4} wrap>
+        <span>{institution.name}</span>
+        <Tag color={institution.type === 'private' ? 'purple' : 'blue'}>{institution.type === 'private' ? 'Privada' : 'Pública'}</Tag>
+      </Space>,
+      key: institution.key,
       width: 205,
       render: (_, row) => {
-        const amount = row.institutions.find(item => item.institutionId === institution.id)?.netTotalClp ?? null
+        const amount = row.institutions.find(item => item.institutionKey === institution.key)?.netTotalClp ?? null
         if (amount === null) return <span className="no-data-cell">—</span>
-        return <div className="dashboard-amount-cell"><strong>{formatClp(amount)}</strong><span>{formatParticipation(amount, row.totalNetClp)}</span></div>
+        return <div className="dashboard-amount-cell">
+          <strong>{formatClp(amount)}</strong>
+          <span>{formatParticipation(amount, row.totalNetClp)}</span>
+          {institution.type === 'private' && (row.privateAttentionCount ?? 0) > 0 && <Link to={privateLiquidationsUrl(row, isAdmin ? professionalId : undefined)}>Ver PDF</Link>}
+        </div>
       },
     }))
     return [...base, ...institutionColumns, {
-      title: 'Total líquido',
+      title: 'Líquido combinado',
       key: 'total',
-      width: 170,
+      width: 175,
       fixed: 'right',
       render: (_, row) => row.totalNetClp === null
         ? <span className="no-data-cell">Sin período</span>
         : <Typography.Text strong className="table-total">{formatClp(row.totalNetClp)}</Typography.Text>,
     }]
-  }, [data?.institutions, visibleMonths, visibleMonthsPerYear])
+  }, [isAdmin, professionalId, visibleInstitutions, visibleMonths, visibleMonthsPerYear])
 
   const yearOptions = Array.from({ length: 50 }, (_, index) => currentYear + 1 - index)
 
@@ -100,9 +120,9 @@ export function DashboardPage() {
       <div>
         <Typography.Text className="eyebrow">LECTURA HISTÓRICA</Typography.Text>
         <Typography.Title level={1}>La evolución de un vistazo.</Typography.Title>
-        <Typography.Paragraph>Compara el líquido estimado por institución y sigue el total mes a mes.</Typography.Paragraph>
+        <Typography.Paragraph>Compara los líquidos públicos y privados y sigue el total combinado mes a mes.</Typography.Paragraph>
       </div>
-      <Tag className="dashboard-unit-tag">CLP · valores líquidos estimados</Tag>
+      <Tag className="dashboard-unit-tag">CLP · importes netos calculados</Tag>
     </section>
 
     <Card className="filter-card" variant="borderless">
@@ -112,12 +132,7 @@ export function DashboardPage() {
           optionFilterProp="label"
           placeholder="Selecciona un profesional"
           value={professionalId}
-          onChange={value => {
-            setLoading(Boolean(value))
-            setProfessionalId(value)
-            setInstitutionIds([])
-            setAvailableInstitutions([])
-          }}
+          onChange={value => { setLoading(true); setProfessionalId(value); setSelectedInstitutionKeys([]) }}
           options={professionals.map(person => ({ value: person.id, label: person.name }))}
           style={{ minWidth: 230 }}
         /></label>}
@@ -127,9 +142,12 @@ export function DashboardPage() {
           mode="multiple"
           allowClear
           placeholder="Todas las instituciones"
-          value={institutionIds}
-          onChange={value => { setLoading(true); setInstitutionIds(value) }}
-          options={availableInstitutions.map(institution => ({ value: institution.id, label: institution.name }))}
+          value={selectedInstitutionKeys}
+          onChange={setSelectedInstitutionKeys}
+          options={(data?.institutions ?? []).map(institution => ({
+            value: institution.key,
+            label: `${institution.name} · ${institution.type === 'private' ? 'Privada' : 'Pública'}`,
+          }))}
           maxTagCount="responsive"
         /></label>
       </div>
@@ -141,10 +159,10 @@ export function DashboardPage() {
     ) : data ? <>
       <Card className="dashboard-table-card" variant="borderless">
         <div className="section-card-heading">
-          <div><Typography.Text className="eyebrow">DETALLE MENSUAL</Typography.Text><Typography.Title level={3}>Líquido por institución</Typography.Title></div>
-          <Tag variant="filled">{data.institutions.length} instituciones</Tag>
+          <div><Typography.Text className="eyebrow">DETALLE MENSUAL</Typography.Text><Typography.Title level={3}>Ingresos por institución</Typography.Title></div>
+          <Tag variant="filled">{visibleInstitutions.length} instituciones</Tag>
         </div>
-        {data.institutions.length === 0 ? <Empty description="No hay instituciones asociadas a este profesional." /> : visibleMonths.length === 0 ? <Empty description="No hay períodos registrados en este rango." /> : <Table<DashboardMonth>
+        {visibleInstitutions.length === 0 ? <Empty description="No hay instituciones asociadas a este profesional." /> : visibleMonths.length === 0 ? <Empty description="No hay períodos registrados en este rango." /> : <Table<DashboardMonth>
           rowKey={row => `${row.year}-${row.month}`}
           columns={columns}
           dataSource={visibleMonths}
@@ -163,6 +181,20 @@ export function DashboardPage() {
       </Card>
     </> : null}
   </div>
+}
+
+function renderClp(value: number | null): string {
+  return value === null ? '—' : formatClp(value)
+}
+
+function formatMinutes(value: number): string {
+  return `${new Intl.NumberFormat('es-CL', { maximumFractionDigits: 6 }).format(value)} min`
+}
+
+function privateLiquidationsUrl(row: DashboardMonth, professionalId?: string): string {
+  const query = new URLSearchParams({ year: String(row.year), month: String(row.month) })
+  if (professionalId) query.set('professionalId', professionalId)
+  return `/private-liquidations?${query.toString()}`
 }
 
 function monthName(month: number): string {

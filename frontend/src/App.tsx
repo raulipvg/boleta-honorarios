@@ -15,6 +15,7 @@ const InstitutionsRatesPage = lazy(() => import('./pages/InstitutionsRatesPage')
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then(page => ({ default: page.AdminUsersPage })))
 const AdminInstitutionsPage = lazy(() => import('./pages/AdminInstitutionsPage').then(page => ({ default: page.AdminInstitutionsPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(page => ({ default: page.SettingsPage })))
+const PrivateLiquidationsPage = lazy(() => import('./pages/PrivateLiquidationsPage').then(page => ({ default: page.PrivateLiquidationsPage })))
 const ForbiddenPage = lazy(() => import('./pages/ForbiddenPage').then(page => ({ default: page.ForbiddenPage })))
 const LoginPage = lazy(() => import('./pages/LoginPage').then(page => ({ default: page.LoginPage })))
 const PasswordChangePage = lazy(() => import('./pages/LoginPage').then(page => ({ default: page.PasswordChangePage })))
@@ -57,6 +58,9 @@ function ApplicationRoutes() {
         </Route>
         <Route element={<ProtectedRoute requiredPermissions={[PermissionCodes.periodsRead]} />}>
           <Route path="/month" element={<MonthWorkspacePage />} />
+        </Route>
+        <Route element={<ProtectedRoute requiredPermissions={[PermissionCodes.privateLiquidationsRead]} />}>
+          <Route path="/private-liquidations" element={<PrivateLiquidationsPage />} />
         </Route>
         <Route element={<ProtectedRoute requiredPermissions={[PermissionCodes.relationshipsRead]} />}>
           <Route path="/institutions" element={<InstitutionsRatesPage />} />

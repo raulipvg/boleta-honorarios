@@ -17,6 +17,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<PeriodInstitution> PeriodInstitutions => Set<PeriodInstitution>();
     public DbSet<HourRecord> HourRecords => Set<HourRecord>();
     public DbSet<AnnualRetentionRate> AnnualRetentionRates => Set<AnnualRetentionRate>();
+    public DbSet<PrivateInstitution> PrivateInstitutions => Set<PrivateInstitution>();
+    public DbSet<PrivatePayerEntity> PrivatePayerEntities => Set<PrivatePayerEntity>();
+    public DbSet<PrivatePaymentRule> PrivatePaymentRules => Set<PrivatePaymentRule>();
+    public DbSet<PrivateLiquidation> PrivateLiquidations => Set<PrivateLiquidation>();
     public DbSet<AuthSessionRecord> AuthSessions => Set<AuthSessionRecord>();
     public DbSet<RotatedRefreshTokenRecord> RotatedRefreshTokens => Set<RotatedRefreshTokenRecord>();
 
@@ -130,6 +134,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.UserId).HasColumnName("usuario_id");
             entity.HasIndex(x => x.UserId).IsUnique();
             entity.Property(x => x.Name).HasColumnName("nombre").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Rut).HasColumnName("rut").HasMaxLength(10);
+            entity.HasIndex(x => x.Rut).IsUnique().HasFilter("rut IS NOT NULL");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
             entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
@@ -209,9 +215,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 table.HasCheckConstraint("ck_periodos_mensuales_json_exact", "total_horas <= 9007199254740991 AND bruto_total_clp <= 9007199254740991 AND retencion_total_clp <= 9007199254740991 AND liquido_total_clp <= 9007199254740991");
                 table.HasCheckConstraint("ck_periodos_mensuales_liquido_consistente", "retencion_total_clp <= bruto_total_clp AND liquido_total_clp = bruto_total_clp - retencion_total_clp");
                 table.HasCheckConstraint("ck_periodos_mensuales_version", "version >= 1");
+                table.HasCheckConstraint("ck_periodos_mensuales_privados_no_negativos", "bruto_privado_total_clp >= 0 AND retencion_privada_total_clp >= 0 AND liquido_privado_total_clp >= 0 AND atenciones_privadas >= 0 AND minutos_atencion_privados >= 0");
+                table.HasCheckConstraint("ck_periodos_mensuales_privados_liquido", "retencion_privada_total_clp <= bruto_privado_total_clp AND liquido_privado_total_clp = bruto_privado_total_clp - retencion_privada_total_clp");
+                table.HasCheckConstraint("ck_periodos_mensuales_privados_json_exact", "bruto_privado_total_clp <= 9007199254740991 AND retencion_privada_total_clp <= 9007199254740991 AND liquido_privado_total_clp <= 9007199254740991 AND atenciones_privadas <= 9007199254740991");
             });
             entity.HasKey(x => x.Id);
             entity.HasAlternateKey(x => new { x.Id, x.ProfessionalId, x.Year });
+            entity.HasAlternateKey(x => new { x.Id, x.ProfessionalId, x.Year, x.Month });
             entity.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
             entity.Property(x => x.ProfessionalId).HasColumnName("profesional_id");
             entity.Property(x => x.Year).HasColumnName("anio");
@@ -221,6 +231,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.GrossTotalClp).HasColumnName("bruto_total_clp");
             entity.Property(x => x.RetentionTotalClp).HasColumnName("retencion_total_clp");
             entity.Property(x => x.NetTotalClp).HasColumnName("liquido_total_clp");
+            entity.Property(x => x.PrivateGrossTotalClp).HasColumnName("bruto_privado_total_clp").HasDefaultValue(0L);
+            entity.Property(x => x.PrivateRetentionTotalClp).HasColumnName("retencion_privada_total_clp").HasDefaultValue(0L);
+            entity.Property(x => x.PrivateNetTotalClp).HasColumnName("liquido_privado_total_clp").HasDefaultValue(0L);
+            entity.Property(x => x.PrivateAttentionCount).HasColumnName("atenciones_privadas").HasDefaultValue(0L);
+            entity.Property(x => x.PrivateAttentionMinutes).HasColumnName("minutos_atencion_privados").HasPrecision(18, 6).HasDefaultValue(0m);
             entity.Property(x => x.Version).HasColumnName("version").HasDefaultValue(1L).IsConcurrencyToken();
             entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
@@ -228,6 +243,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasOne<Professional>().WithMany().HasForeignKey(x => x.ProfessionalId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<AnnualRetentionRate>().WithMany().HasForeignKey(x => x.Year).OnDelete(DeleteBehavior.Restrict);
         });
+
+        ConfigurePrivateIncome(builder);
 
         builder.Entity<PeriodInstitution>(entity =>
         {
@@ -323,6 +340,158 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasIndex(x => x.RefreshTokenHash).IsUnique();
             entity.HasIndex(x => x.RefreshFamilyId);
             entity.HasOne<AuthSessionRecord>().WithMany().HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigurePrivateIncome(ModelBuilder builder)
+    {
+        var sanatorioAlemánId = Guid.Parse("8d1040c1-3da3-42fd-842a-c87eba660001");
+        var serviciosPayerId = Guid.Parse("8d1040c1-3da3-42fd-842a-c87eba660002");
+        var clinicaPayerId = Guid.Parse("8d1040c1-3da3-42fd-842a-c87eba660003");
+        var participationsRuleId = Guid.Parse("8d1040c1-3da3-42fd-842a-c87eba660004");
+        var seedDate = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        builder.Entity<PrivateInstitution>(entity =>
+        {
+            entity.ToTable("instituciones_privadas", table => table.HasCheckConstraint(
+                "ck_instituciones_privadas_nombre_no_vacio", "length(btrim(nombre)) > 0"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(x => x.Name).HasColumnName("nombre").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Active).HasColumnName("activa").HasDefaultValue(true);
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+            entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasData(new
+            {
+                Id = sanatorioAlemánId,
+                Name = "Sanatorio Alemán",
+                Active = true,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            });
+        });
+
+        builder.Entity<PrivatePayerEntity>(entity =>
+        {
+            entity.ToTable("entidades_pagadoras_privadas", table =>
+            {
+                table.HasCheckConstraint("ck_entidades_pagadoras_privadas_nombre_no_vacio", "length(btrim(razon_social)) > 0");
+                table.HasCheckConstraint("ck_entidades_pagadoras_privadas_rut_no_vacio", "length(btrim(rut)) > 0");
+            });
+            entity.HasKey(x => x.Id);
+            entity.HasAlternateKey(x => new { x.Id, x.PrivateInstitutionId });
+            entity.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(x => x.PrivateInstitutionId).HasColumnName("institucion_privada_id");
+            entity.Property(x => x.Rut).HasColumnName("rut").HasMaxLength(10).IsRequired();
+            entity.Property(x => x.LegalName).HasColumnName("razon_social").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Active).HasColumnName("activa").HasDefaultValue(true);
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+            entity.HasIndex(x => x.Rut).IsUnique();
+            entity.HasIndex(x => new { x.PrivateInstitutionId, x.Active });
+            entity.HasOne<PrivateInstitution>().WithMany().HasForeignKey(x => x.PrivateInstitutionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasData(
+                new
+                {
+                    Id = serviciosPayerId,
+                    PrivateInstitutionId = sanatorioAlemánId,
+                    Rut = "76389986-1",
+                    LegalName = "SERVICIOS SANATORIO ALEMAN SPA",
+                    Active = true,
+                    CreatedAt = seedDate
+                },
+                new
+                {
+                    Id = clinicaPayerId,
+                    PrivateInstitutionId = sanatorioAlemánId,
+                    Rut = "88611600-4",
+                    LegalName = "CLINICA SANATORIO ALEMAN SPA",
+                    Active = true,
+                    CreatedAt = seedDate
+                });
+        });
+
+        builder.Entity<PrivatePaymentRule>(entity =>
+        {
+            entity.ToTable("reglas_pago_privadas", table => table.HasCheckConstraint(
+                "ck_reglas_pago_privadas_version", "version >= 1"));
+            entity.HasKey(x => x.Id);
+            entity.HasAlternateKey(x => new { x.Id, x.PrivateInstitutionId });
+            entity.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(x => x.PrivateInstitutionId).HasColumnName("institucion_privada_id");
+            entity.Property(x => x.Code).HasColumnName("codigo").HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Version).HasColumnName("version");
+            entity.Property(x => x.Active).HasColumnName("activa").HasDefaultValue(true);
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+            entity.HasIndex(x => new { x.PrivateInstitutionId, x.Code, x.Version }).IsUnique();
+            entity.HasOne<PrivateInstitution>().WithMany().HasForeignKey(x => x.PrivateInstitutionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasData(new
+            {
+                Id = participationsRuleId,
+                PrivateInstitutionId = sanatorioAlemánId,
+                Code = "SANATORIO_ALEMAN_PARTICIPACIONES",
+                Version = 1,
+                Active = true,
+                CreatedAt = seedDate
+            });
+        });
+
+        builder.Entity<PrivateLiquidation>(entity =>
+        {
+            entity.ToTable("liquidaciones_privadas", table =>
+            {
+                table.HasCheckConstraint("ck_liquidaciones_privadas_anio", "anio BETWEEN 1900 AND 32767");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_mes", "mes BETWEEN 1 AND 12");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_quincena", "quincena IN (1, 2)");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_importes_no_negativos", "bruto_total_clp >= 0 AND retencion_total_clp >= 0 AND liquido_total_clp >= 0 AND (total_servicio_clp IS NULL OR total_servicio_clp >= 0)");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_liquido_consistente", "retencion_total_clp <= bruto_total_clp AND liquido_total_clp = bruto_total_clp - retencion_total_clp");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_json_exact", "bruto_total_clp <= 9007199254740991 AND retencion_total_clp <= 9007199254740991 AND liquido_total_clp <= 9007199254740991 AND atenciones <= 9007199254740991");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_atenciones", "atenciones > 0");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_atenciones_reportadas", "atenciones_reportadas_pdf IS NULL OR atenciones_reportadas_pdf >= 0");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_minutos", "minutos_por_atencion > 0 AND minutos_totales >= 0");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_archivo", "tamano_archivo_bytes BETWEEN 1 AND 1048576");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(x => x.PeriodId).HasColumnName("periodo_id");
+            entity.Property(x => x.ProfessionalId).HasColumnName("profesional_id");
+            entity.Property(x => x.Year).HasColumnName("anio");
+            entity.Property(x => x.Month).HasColumnName("mes");
+            entity.Property(x => x.Fortnight).HasColumnName("quincena");
+            entity.Property(x => x.PrivateInstitutionId).HasColumnName("institucion_privada_id");
+            entity.Property(x => x.PayerEntityId).HasColumnName("entidad_pagadora_id");
+            entity.Property(x => x.PaymentRuleId).HasColumnName("regla_pago_id");
+            entity.Property(x => x.CollectorRut).HasColumnName("rut_cobrador").HasMaxLength(10).IsRequired();
+            entity.Property(x => x.LiquidationNumber).HasColumnName("numero_liquidacion").HasMaxLength(50).IsRequired();
+            entity.Property(x => x.LiquidationDate).HasColumnName("fecha_liquidacion").HasColumnType("date");
+            entity.Property(x => x.PaymentService).HasColumnName("servicio_pago").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.ExecutorName).HasColumnName("ejecutor").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.ServiceTotalClp).HasColumnName("total_servicio_clp");
+            entity.Property(x => x.GrossTotalClp).HasColumnName("bruto_total_clp");
+            entity.Property(x => x.RetentionTotalClp).HasColumnName("retencion_total_clp");
+            entity.Property(x => x.NetTotalClp).HasColumnName("liquido_total_clp");
+            entity.Property(x => x.AttentionCount).HasColumnName("atenciones");
+            entity.Property(x => x.ReportedAttentionCount).HasColumnName("atenciones_reportadas_pdf");
+            entity.Property(x => x.MinutesPerAttention).HasColumnName("minutos_por_atencion").HasPrecision(18, 6);
+            entity.Property(x => x.TotalAttentionMinutes).HasColumnName("minutos_totales").HasPrecision(18, 6);
+            entity.Property(x => x.Sha256).HasColumnName("sha256").HasColumnType("character(64)").IsRequired();
+            entity.Property(x => x.StorageKey).HasColumnName("storage_key").HasMaxLength(100).IsRequired();
+            entity.Property(x => x.OriginalFileName).HasColumnName("nombre_archivo").HasMaxLength(255).IsRequired();
+            entity.Property(x => x.FileSizeBytes).HasColumnName("tamano_archivo_bytes");
+            entity.Property(x => x.ImportedAt).HasColumnName("importada_at").HasDefaultValueSql("now()");
+            entity.HasIndex(x => new { x.ProfessionalId, x.Sha256 }).IsUnique();
+            entity.HasIndex(x => new { x.ProfessionalId, x.PayerEntityId, x.LiquidationNumber, x.Year, x.Month, x.Fortnight }).IsUnique();
+            entity.HasIndex(x => new { x.ProfessionalId, x.Year, x.Month });
+            entity.HasOne<Professional>().WithMany().HasForeignKey(x => x.ProfessionalId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<MonthlyPeriod>().WithMany()
+                .HasForeignKey(x => new { x.PeriodId, x.ProfessionalId, x.Year, x.Month })
+                .HasPrincipalKey(x => new { x.Id, x.ProfessionalId, x.Year, x.Month }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PrivatePayerEntity>().WithMany()
+                .HasForeignKey(x => new { x.PayerEntityId, x.PrivateInstitutionId })
+                .HasPrincipalKey(x => new { x.Id, x.PrivateInstitutionId }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PrivatePaymentRule>().WithMany()
+                .HasForeignKey(x => new { x.PaymentRuleId, x.PrivateInstitutionId })
+                .HasPrincipalKey(x => new { x.Id, x.PrivateInstitutionId }).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

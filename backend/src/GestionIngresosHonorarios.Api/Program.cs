@@ -161,6 +161,9 @@ builder.Services.AddAuthorization(options =>
     AddPermission(options, PermissionCatalog.HoursManage);
     AddPermission(options, PermissionCatalog.DashboardRead);
     AddPermission(options, PermissionCatalog.RetentionRead);
+    AddPermission(options, PermissionCatalog.PrivateLiquidationsRead);
+    AddPermission(options, PermissionCatalog.PrivateLiquidationsCreate);
+    AddPermission(options, PermissionCatalog.PrivateLiquidationsDelete);
 });
 
 var app = builder.Build();

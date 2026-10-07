@@ -20,7 +20,9 @@ public sealed class ProfileController(IIncomeApplicationService income, IActorCo
     [HttpPut]
     [Authorize(Policy = PermissionCatalog.ProfileUpdate)]
     public async Task<ActionResult<ProfessionalProfileDto>> Update([FromBody] UpdateProfilePayload payload, CancellationToken cancellationToken) =>
-        Ok(await income.UpdateProfileAsync(await actors.GetAsync(User.GetSubjectId(), cancellationToken), payload.Name, cancellationToken));
+        Ok(await income.UpdateProfileAsync(await actors.GetAsync(User.GetSubjectId(), cancellationToken), payload.Name, payload.Rut, cancellationToken));
 }
 
-public sealed record UpdateProfilePayload([param: Required, StringLength(200, MinimumLength = 1)] string Name);
+public sealed record UpdateProfilePayload(
+    [param: Required, StringLength(200, MinimumLength = 1)] string Name,
+    [param: StringLength(12)] string? Rut);

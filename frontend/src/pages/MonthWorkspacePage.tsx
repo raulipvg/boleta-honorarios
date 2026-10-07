@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ClockCircleOutlined, CloseOutlined, ExclamationCircleFilled, LoadingOutlined, PlusOutlined, WarningFilled } from '@ant-design/icons'
 import { App as AntdApp, Alert, Button, Card, Col, DatePicker, Empty, Input, Modal, Popconfirm, Row, Select, Skeleton, Space, Tag, Tooltip, Typography, type InputRef } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
@@ -23,6 +24,7 @@ export function MonthWorkspacePage() {
     message.open(notification)
   }
   const auth = useAuth()
+  const navigate = useNavigate()
   const isAdmin = auth.hasRole(RoleCodes.administrator)
   const canEdit = auth.hasPermission(PermissionCodes.periodsManage) && auth.hasPermission(PermissionCodes.hoursManage)
   const [selectedMonth, setSelectedMonth] = useState<Dayjs>(dayjs().date(1))
@@ -241,6 +243,27 @@ export function MonthWorkspacePage() {
             </div>
           </section>
 
+          {workspace.exists && <Card className="month-summary-card private-month-summary" variant="borderless">
+            <div className="month-summary-heading">
+              <div>
+                <Typography.Text className="eyebrow">SANATORIO ALEMÁN</Typography.Text>
+                <Typography.Title level={2}>Liquidaciones privadas</Typography.Title>
+              </div>
+              <Button onClick={() => {
+                const query = new URLSearchParams({ year: String(year), month: String(month) })
+                if (isAdmin && professionalId) query.set('professionalId', professionalId)
+                navigate(`/private-liquidations?${query.toString()}`)
+              }}>Ver liquidaciones</Button>
+            </div>
+            <div className="summary-metrics">
+              <SummaryMetric label="Bruto privado" value={formatClp(workspace.privateGrossTotalClp)} />
+              <SummaryMetric label="Retención privada" value={formatClp(workspace.privateRetentionTotalClp)} />
+              <SummaryMetric label="Líquido privado" value={formatClp(workspace.privateNetTotalClp)} emphasis />
+              <SummaryMetric label="Atenciones" value={String(workspace.privateAttentionCount)} />
+              <SummaryMetric label="Minutos de atención" value={`${formatMinutes(workspace.privateAttentionMinutes)} min`} />
+            </div>
+          </Card>}
+
           {isAdmin && <Alert className="readonly-alert" type="info" showIcon title="Vista de administrador" description="Puedes consultar períodos, horas y montos. Las modificaciones de horas corresponden exclusivamente al profesional." />}
 
           {canEdit && <Modal
@@ -415,6 +438,10 @@ function mergeWorkspace(
       }
     }),
   }
+}
+
+function formatMinutes(value: number): string {
+  return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 6 }).format(value)
 }
 
 function SummaryMetric({ label, value, hint, emphasis = false }: { label: string; value: string; hint?: string; emphasis?: boolean }) {

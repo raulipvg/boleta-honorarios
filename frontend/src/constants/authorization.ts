@@ -17,4 +17,7 @@ export const PermissionCodes = {
   hoursManage: 'hours:record:manage',
   dashboardRead: 'dashboard:income:read',
   retentionRead: 'configuration:retention:read',
+  privateLiquidationsRead: 'private-liquidations:read',
+  privateLiquidationsCreate: 'private-liquidations:create',
+  privateLiquidationsDelete: 'private-liquidations:delete',
 } as const

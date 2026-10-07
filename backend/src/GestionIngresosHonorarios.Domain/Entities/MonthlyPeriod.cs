@@ -13,6 +13,11 @@ public sealed class MonthlyPeriod
     public long GrossTotalClp { get; private set; }
     public long RetentionTotalClp { get; private set; }
     public long NetTotalClp { get; private set; }
+    public long PrivateGrossTotalClp { get; private set; }
+    public long PrivateRetentionTotalClp { get; private set; }
+    public long PrivateNetTotalClp { get; private set; }
+    public long PrivateAttentionCount { get; private set; }
+    public decimal PrivateAttentionMinutes { get; private set; }
     public long Version { get; private set; } = 1;
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -42,6 +47,26 @@ public sealed class MonthlyPeriod
         GrossTotalClp = gross;
         RetentionTotalClp = retention;
         NetTotalClp = net;
+        Version++;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    public void UpdatePrivateTotals(long gross, long retention, long net, long attentionCount, decimal attentionMinutes)
+    {
+        if (gross < 0 || retention < 0 || net < 0 || retention > gross || net != gross - retention
+            || attentionCount < 0 || attentionMinutes < 0)
+            throw new InvalidOperationException("Los agregados privados del período no son consistentes.");
+        if (gross > Services.IncomeCalculator.MaxExactInteger
+            || retention > Services.IncomeCalculator.MaxExactInteger
+            || net > Services.IncomeCalculator.MaxExactInteger
+            || attentionCount > Services.IncomeCalculator.MaxExactInteger)
+            throw new OverflowException("Los agregados privados exceden el rango exacto permitido.");
+
+        PrivateGrossTotalClp = gross;
+        PrivateRetentionTotalClp = retention;
+        PrivateNetTotalClp = net;
+        PrivateAttentionCount = attentionCount;
+        PrivateAttentionMinutes = attentionMinutes;
         Version++;
         UpdatedAt = DateTimeOffset.UtcNow;
     }

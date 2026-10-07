@@ -83,18 +83,23 @@ export interface MonthlyWorkspace {
   grossTotalClp: number
   retentionTotalClp: number
   netTotalClp: number
+  privateGrossTotalClp: number
+  privateRetentionTotalClp: number
+  privateNetTotalClp: number
+  privateAttentionCount: number
+  privateAttentionMinutes: number
   version: number
   institutions: PeriodInstitution[]
 }
 
 export interface DashboardInstitution {
-  id: string
-  professionalInstitutionId: string
+  key: string
   name: string
+  type: 'public' | 'private'
 }
 
 export interface DashboardInstitutionValue {
-  institutionId: string
+  institutionKey: string
   netTotalClp: number | null
 }
 
@@ -103,6 +108,15 @@ export interface DashboardMonth {
   month: number
   periodExists: boolean
   totalNetClp: number | null
+  publicHours: number | null
+  publicGrossClp: number | null
+  publicRetentionClp: number | null
+  publicNetClp: number | null
+  privateGrossClp: number | null
+  privateRetentionClp: number | null
+  privateNetClp: number | null
+  privateAttentionCount: number | null
+  privateAttentionMinutes: number | null
   institutions: DashboardInstitutionValue[]
 }
 
@@ -126,4 +140,57 @@ export interface AccountSummary {
 export interface RetentionRate {
   year: number
   percentage: number
+}
+
+export interface PrivateLiquidationPreview {
+  sha256: string
+  privateInstitutionName: string
+  payerEntityId: string
+  payerLegalName: string
+  payerRut: string
+  collectorRut: string
+  liquidationNumber: string
+  liquidationDate: string
+  year: number
+  month: number
+  fortnight: number
+  paymentService: string
+  executorName: string
+  serviceTotalClp: number | null
+  grossTotalClp: number
+  appliedRetentionPercentage: number
+  retentionTotalClp: number
+  netTotalClp: number
+  attentionCount: number
+  reportedAttentionCount: number | null
+  minutesPerAttention: number
+  totalAttentionMinutes: number
+  fileSizeBytes: number
+  originalFileName: string
+}
+
+export interface PrivateLiquidation {
+  id: string
+  privateInstitutionName: string
+  payerEntityId: string
+  payerLegalName: string
+  payerRut: string
+  collectorRut: string
+  liquidationNumber: string
+  liquidationDate: string
+  year: number
+  month: number
+  fortnight: number
+  paymentService: string
+  executorName: string
+  serviceTotalClp: number | null
+  appliedRetentionPercentage: number
+  grossTotalClp: number
+  retentionTotalClp: number
+  netTotalClp: number
+  attentionCount: number
+  reportedAttentionCount: number | null
+  minutesPerAttention: number
+  totalAttentionMinutes: number
+  importedAt: string
 }

@@ -3,6 +3,7 @@ using System;
 using GestionIngresosHonorarios.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GestionIngresosHonorarios.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261007015059_PrivateLiquidationsAndProfessionalRut")]
+    partial class PrivateLiquidationsAndProfessionalRut
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -501,10 +504,6 @@ namespace GestionIngresosHonorarios.Infrastructure.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("profesional_id");
 
-                    b.Property<long?>("ReportedAttentionCount")
-                        .HasColumnType("bigint")
-                        .HasColumnName("atenciones_reportadas_pdf");
-
                     b.Property<long>("RetentionTotalClp")
                         .HasColumnType("bigint")
                         .HasColumnName("retencion_total_clp");
@@ -556,8 +555,6 @@ namespace GestionIngresosHonorarios.Infrastructure.Data.Migrations
                             t.HasCheckConstraint("ck_liquidaciones_privadas_archivo", "tamano_archivo_bytes BETWEEN 1 AND 1048576");
 
                             t.HasCheckConstraint("ck_liquidaciones_privadas_atenciones", "atenciones > 0");
-
-                            t.HasCheckConstraint("ck_liquidaciones_privadas_atenciones_reportadas", "atenciones_reportadas_pdf IS NULL OR atenciones_reportadas_pdf >= 0");
 
                             t.HasCheckConstraint("ck_liquidaciones_privadas_importes_no_negativos", "bruto_total_clp >= 0 AND retencion_total_clp >= 0 AND liquido_total_clp >= 0 AND (total_servicio_clp IS NULL OR total_servicio_clp >= 0)");
 
