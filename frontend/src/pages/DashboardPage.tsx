@@ -43,6 +43,10 @@ export function DashboardPage() {
     const selected = new Set(selectedInstitutionKeys)
     return (data?.institutions ?? []).filter(institution => selected.has(institution.key))
   }, [data?.institutions, selectedInstitutionKeys])
+  const tableInstitutions = useMemo(() => [...visibleInstitutions].sort((first, second) => {
+    if (first.type !== second.type) return first.type === 'public' ? -1 : 1
+    return first.name.localeCompare(second.name, 'es-CL')
+  }), [visibleInstitutions])
   const visibleMonthsPerYear = useMemo(() => {
     const counts = new Map<number, number>()
     for (const month of visibleMonths)
@@ -65,7 +69,7 @@ export function DashboardPage() {
       },
       { title: 'Mes', dataIndex: 'month', key: 'month', width: 132, fixed: 'left', render: value => monthName(value) },
     ]
-    const institutionColumns: TableColumnsType<DashboardMonth> = visibleInstitutions.map(institution => ({
+    const institutionColumns: TableColumnsType<DashboardMonth> = tableInstitutions.map(institution => ({
       title: <Space size={4} wrap>
         <Tag color={institution.type === 'private' ? 'purple' : 'blue'}>{institution.type === 'private' ? 'Privada' : 'Pública'}</Tag>
         <span>{institution.name}</span>
@@ -90,7 +94,7 @@ export function DashboardPage() {
         ? <span className="no-data-cell">Sin período</span>
         : <Typography.Text strong className="table-total">{formatClp(row.totalNetClp)}</Typography.Text>,
     }]
-  }, [visibleInstitutions, visibleMonths, visibleMonthsPerYear])
+  }, [tableInstitutions, visibleMonths, visibleMonthsPerYear])
 
   const yearOptions = Array.from({ length: 50 }, (_, index) => currentYear + 1 - index)
 
@@ -163,5 +167,6 @@ export function DashboardPage() {
 }
 
 function monthName(month: number): string {
-  return new Intl.DateTimeFormat('es-CL', { month: 'long' }).format(new Date(2026, month - 1, 1))
+  const name = new Intl.DateTimeFormat('es-CL', { month: 'long' }).format(new Date(2026, month - 1, 1))
+  return `${name.charAt(0).toLocaleUpperCase('es-CL')}${name.slice(1)}`
 }

@@ -70,10 +70,10 @@ export function SettingsPage() {
           <Card className="settings-card" variant="borderless">
             <div className="section-card-heading"><div><Typography.Text className="eyebrow">PERFIL PROFESIONAL</Typography.Text><Typography.Title level={3}>Tus datos</Typography.Title></div></div>
             <Form form={form} layout="vertical" onFinish={updateProfile} requiredMark={false}>
-              <Form.Item name="name" label="Nombre del perfil" rules={[{ required: true, whitespace: true }, { max: 200 }]}><Input disabled={!canEditProfile} maxLength={200} /></Form.Item>
+              <Form.Item name="name" label="Nombre Completo" rules={[{ required: true, whitespace: true }, { max: 200 }]}><Input disabled={!canEditProfile} maxLength={200} /></Form.Item>
               <Form.Item
                 name="rut"
-                label="RUT profesional"
+                label="RUT"
                 extra="Necesario para importar liquidaciones privadas."
                 rules={[{ max: 12, message: 'El RUT no puede superar 12 caracteres.' }]}
               >

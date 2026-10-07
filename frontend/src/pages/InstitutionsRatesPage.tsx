@@ -199,10 +199,10 @@ export function InstitutionsRatesPage() {
             <Form.Item name="year" label="Año" rules={[{ required: true, message: 'Ingresa el año de la tarifa.' }]}>
               <InputNumber className="rate-year-input" min={1900} max={32767} precision={0} placeholder="Año" />
             </Form.Item>
-            <Form.Item name="hourlyRateClp" label="Tarifa bruta por hora" rules={[{ required: true, message: 'Ingresa el valor hora.' }]}>
+            <Form.Item name="hourlyRateClp" label="Tarifa Bruta/Hr" rules={[{ required: true, message: 'Ingresa el valor hora.' }]}>
               <HourlyRateInput min={0} max={9_007_199_254_740_991} precision={0} step={100} placeholder="0" />
             </Form.Item>
-            <Form.Item><Button type="primary" htmlType="submit" loading={busy}>Publicar nueva versión</Button></Form.Item>
+            <Form.Item><Button type="primary" htmlType="submit" loading={busy}>Publicar Versión</Button></Form.Item>
           </Form>}
         </Card>
       </Col>)}

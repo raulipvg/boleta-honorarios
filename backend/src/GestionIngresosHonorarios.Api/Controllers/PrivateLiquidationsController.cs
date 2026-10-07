@@ -85,7 +85,7 @@ public sealed class PrivateLiquidationsController(
 
     [HttpGet]
     [Authorize(Policy = PermissionCatalog.PrivateLiquidationsRead)]
-    public async Task<ActionResult<IReadOnlyList<PrivateLiquidationDto>>> List(
+    public async Task<ActionResult<IReadOnlyList<PrivateLiquidationListItemDto>>> List(
         [FromQuery] Guid? professionalId,
         [FromQuery] short? year,
         [FromQuery] short? month,

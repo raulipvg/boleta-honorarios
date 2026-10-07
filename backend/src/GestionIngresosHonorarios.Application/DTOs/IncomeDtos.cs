@@ -96,6 +96,30 @@ public sealed record PrivateLiquidationDto(
     long TotalAttentionMinutes,
     DateTimeOffset ImportedAt);
 
+public sealed record PrivateLiquidationListItemDto(
+    Guid Id,
+    string PrivateInstitutionName,
+    Guid PayerEntityId,
+    string PayerLegalName,
+    string PayerRut,
+    string SourceType,
+    string? ReportedProfessionalName,
+    string? LiquidationNumber,
+    DateOnly? LiquidationDate,
+    short ServiceYear,
+    short ServiceMonth,
+    short AccountingYear,
+    short AccountingMonth,
+    string PaymentService,
+    decimal AppliedRetentionPercentage,
+    long GrossTotalClp,
+    long RetentionTotalClp,
+    long NetTotalClp,
+    long AttentionCount,
+    int MinutesPerAttention,
+    long TotalAttentionMinutes,
+    DateTimeOffset ImportedAt);
+
 public sealed record CebienEmailPreviewRequest(
     string EmailBody,
     short AccountingYear,

@@ -194,3 +194,28 @@ export interface PrivateLiquidation {
   totalAttentionMinutes: number
   importedAt: string
 }
+
+export interface PrivateLiquidationListItem {
+  id: string
+  privateInstitutionName: string
+  payerEntityId: string
+  payerLegalName: string
+  payerRut: string
+  sourceType: 'pdf' | 'email'
+  reportedProfessionalName: string | null
+  liquidationNumber: string | null
+  liquidationDate: string | null
+  serviceYear: number
+  serviceMonth: number
+  accountingYear: number
+  accountingMonth: number
+  paymentService: string
+  appliedRetentionPercentage: number
+  grossTotalClp: number
+  retentionTotalClp: number
+  netTotalClp: number
+  attentionCount: number
+  minutesPerAttention: number
+  totalAttentionMinutes: number
+  importedAt: string
+}

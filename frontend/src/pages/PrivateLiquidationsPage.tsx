@@ -5,6 +5,7 @@ import {
   App as AntdApp,
   Button,
   Card,
+  Col,
   Descriptions,
   DatePicker,
   Empty,
@@ -17,6 +18,7 @@ import {
   Skeleton,
   Spin,
   Space,
+  Row,
   Table,
   Tag,
   Tooltip,
@@ -36,7 +38,7 @@ import { PermissionCodes, RoleCodes } from '../constants/authorization'
 import { formatClp, formatRate } from '../utils/format'
 import { monthLabel, monthValue } from '../utils/date'
 import { MonthSelector } from '../components/layout/MonthSelector'
-import type { PrivateLiquidation, PrivateLiquidationPreview, ProfessionalSummary } from '../types/api'
+import type { PrivateLiquidationListItem, PrivateLiquidationPreview, ProfessionalSummary } from '../types/api'
 
 const MAX_PDF_BYTES = 1_048_576
 type PrivateImportInstitution = 'sanatorio-aleman' | 'centro-cebien'
@@ -57,7 +59,7 @@ export function PrivateLiquidationsPage() {
   const [professionals, setProfessionals] = useState<ProfessionalSummary[]>([])
   const [professionalId, setProfessionalId] = useState<string | undefined>(() => searchParams.get('professionalId') ?? undefined)
   const [profileRut, setProfileRut] = useState<string | null>(null)
-  const [liquidations, setLiquidations] = useState<PrivateLiquidation[]>([])
+  const [liquidations, setLiquidations] = useState<PrivateLiquidationListItem[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadFileList, setUploadFileList] = useState<UploadFile[]>([])
   const [selectedImportInstitution, setSelectedImportInstitution] = useState<PrivateImportInstitution | null>(null)
@@ -71,7 +73,7 @@ export function PrivateLiquidationsPage() {
   const [busy, setBusy] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [previewingId, setPreviewingId] = useState<string | null>(null)
-  const [previewLiquidation, setPreviewLiquidation] = useState<PrivateLiquidation | null>(null)
+  const [previewLiquidation, setPreviewLiquidation] = useState<PrivateLiquidationListItem | null>(null)
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
   const [emailSourceText, setEmailSourceText] = useState<string | null>(null)
   const [readingEmailSourceId, setReadingEmailSourceId] = useState<string | null>(null)
@@ -79,7 +81,7 @@ export function PrivateLiquidationsPage() {
   const [error, setError] = useState<string | null>(null)
   const { year, month } = monthValue(selectedMonth)
 
-  const loadLiquidations = useCallback((): Promise<PrivateLiquidation[]> => {
+  const loadLiquidations = useCallback((): Promise<PrivateLiquidationListItem[]> => {
     if (isAdmin && !professionalId) {
       return Promise.resolve([])
     }
@@ -227,7 +229,7 @@ export function PrivateLiquidationsPage() {
     }
   }
 
-  const downloadFile = useCallback(async (liquidation: PrivateLiquidation) => {
+  const downloadFile = useCallback(async (liquidation: PrivateLiquidationListItem) => {
     setDownloadingId(liquidation.id)
     try {
       const blob = await privateLiquidationService.download(liquidation.id)
@@ -244,7 +246,7 @@ export function PrivateLiquidationsPage() {
     }
   }, [])
 
-  const previewFile = useCallback(async (liquidation: PrivateLiquidation) => {
+  const previewFile = useCallback(async (liquidation: PrivateLiquidationListItem) => {
     if (previewingId !== null || readingEmailSourceId !== null) return
     setPreviewingId(liquidation.id)
     try {
@@ -259,7 +261,7 @@ export function PrivateLiquidationsPage() {
     }
   }, [previewingId, readingEmailSourceId])
 
-  const previewEmailSource = useCallback(async (liquidation: PrivateLiquidation) => {
+  const previewEmailSource = useCallback(async (liquidation: PrivateLiquidationListItem) => {
     if (previewingId !== null || readingEmailSourceId !== null) return
     setReadingEmailSourceId(liquidation.id)
     try {
@@ -282,7 +284,7 @@ export function PrivateLiquidationsPage() {
     setEmailSourceText(null)
   }
 
-  const deleteLiquidation = useCallback(async (liquidation: PrivateLiquidation) => {
+  const deleteLiquidation = useCallback(async (liquidation: PrivateLiquidationListItem) => {
     try {
       await privateLiquidationService.delete(liquidation.id)
       setLiquidations(await loadLiquidations())
@@ -292,21 +294,19 @@ export function PrivateLiquidationsPage() {
     }
   }, [loadLiquidations, message])
 
-  const columns = useMemo<TableColumnsType<PrivateLiquidation>>(() => [
-    { title: 'Quincena', dataIndex: 'fortnight', key: 'fortnight', width: 100, render: value => value === null ? '—' : `${value}.ª` },
+  const retentionRate = liquidations[0]?.appliedRetentionPercentage
+  const retentionColumnTitle = retentionRate === undefined
+    ? 'Retención'
+    : `Retención (${formatRate(retentionRate)})`
+  const columns = useMemo<TableColumnsType<PrivateLiquidationListItem>>(() => [
     { title: 'Liquidación', dataIndex: 'liquidationNumber', key: 'number', width: 125, render: value => value ?? '—' },
     { title: 'Fecha', dataIndex: 'liquidationDate', key: 'date', width: 115, render: value => value ? dayjs(value).format('DD-MM-YYYY') : '—' },
     { title: 'Entidad pagadora', key: 'payer', width: 250, render: (_, row) => <Space orientation="vertical" size={0}><span>{row.payerLegalName}</span><Typography.Text type="secondary">RUT {row.payerRut}</Typography.Text></Space> },
-    { title: 'RUT cobrador', dataIndex: 'collectorRut', key: 'collector-rut', width: 125, render: value => value ?? '—' },
     { title: 'Servicio', dataIndex: 'paymentService', key: 'service', width: 170 },
-    { title: 'Ejecutor', dataIndex: 'executorName', key: 'executor', width: 190, render: value => value ?? '—' },
-    { title: 'Total servicio', dataIndex: 'serviceTotalClp', key: 'service-total', align: 'right', width: 130, render: value => value === null ? '—' : formatClp(value) },
     { title: 'Bruto', dataIndex: 'grossTotalClp', key: 'gross', align: 'right', width: 130, render: formatClp },
-    { title: 'Tasa', dataIndex: 'appliedRetentionPercentage', key: 'retention-rate', align: 'right', width: 90, render: value => formatRate(value) },
-    { title: 'Retención', dataIndex: 'retentionTotalClp', key: 'retention', align: 'right', width: 130, render: formatClp },
+    { title: retentionColumnTitle, dataIndex: 'retentionTotalClp', key: 'retention', align: 'right', width: 150, render: formatClp },
     { title: 'Líquido', dataIndex: 'netTotalClp', key: 'net', align: 'right', width: 130, render: value => <Typography.Text strong>{formatClp(value)}</Typography.Text> },
     { title: 'Atenciones', dataIndex: 'attentionCount', key: 'attentions', align: 'right', width: 105 },
-    { title: 'Cierre PDF', dataIndex: 'reportedAttentionCount', key: 'reported-attentions', align: 'right', width: 110, render: value => value ?? '—' },
     { title: 'Min/atención', dataIndex: 'minutesPerAttention', key: 'minutes-per-attention', align: 'right', width: 125, render: value => `${formatMinutes(value)} min` },
     { title: 'Hrs totales', dataIndex: 'totalAttentionMinutes', key: 'hours-total', align: 'right', width: 135, render: value => `${formatHoursFromMinutes(value)} h` },
     {
@@ -321,7 +321,7 @@ export function PrivateLiquidationsPage() {
         </Popconfirm>}
       </Space>,
     },
-  ], [canDelete, deleteLiquidation, downloadFile, downloadingId, previewEmailSource, previewFile, previewingId, readingEmailSourceId])
+  ], [canDelete, deleteLiquidation, downloadFile, downloadingId, previewEmailSource, previewFile, previewingId, readingEmailSourceId, retentionColumnTitle])
 
   const privateGross = liquidations.reduce((total, item) => total + item.grossTotalClp, 0)
   const privateRetention = liquidations.reduce((total, item) => total + item.retentionTotalClp, 0)
@@ -372,7 +372,7 @@ export function PrivateLiquidationsPage() {
           />
         </div>
         {loading ? <Skeleton active paragraph={{ rows: 4 }} /> : liquidations.length === 0 ? <Empty description="No hay liquidaciones privadas para este mes." /> : <>
-          <Table<PrivateLiquidation>
+          <Table<PrivateLiquidationListItem>
             rowKey="id"
             columns={columns}
             dataSource={liquidations}
@@ -381,19 +381,16 @@ export function PrivateLiquidationsPage() {
             size="middle"
             summary={() => <Table.Summary fixed="bottom">
               <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={7} align="right">
+                <Table.Summary.Cell index={0} colSpan={4} align="right">
                   <Typography.Text strong>Totales del mes</Typography.Text>
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={7} align="right">—</Table.Summary.Cell>
-                <Table.Summary.Cell index={8} align="right"><Typography.Text strong>{formatClp(privateGross)}</Typography.Text></Table.Summary.Cell>
-                <Table.Summary.Cell index={9} align="right">—</Table.Summary.Cell>
-                <Table.Summary.Cell index={10} align="right"><Typography.Text strong>{formatClp(privateRetention)}</Typography.Text></Table.Summary.Cell>
-                <Table.Summary.Cell index={11} align="right"><Typography.Text strong>{formatClp(privateNet)}</Typography.Text></Table.Summary.Cell>
-                <Table.Summary.Cell index={12} align="right"><Typography.Text strong>{attentionCount}</Typography.Text></Table.Summary.Cell>
-                <Table.Summary.Cell index={13} align="right">—</Table.Summary.Cell>
-                <Table.Summary.Cell index={14} align="right">—</Table.Summary.Cell>
-                <Table.Summary.Cell index={15} align="right"><Typography.Text strong>{formatHoursFromMinutes(totalAttentionMinutes)} h</Typography.Text></Table.Summary.Cell>
-                <Table.Summary.Cell index={16} align="right">—</Table.Summary.Cell>
+                <Table.Summary.Cell index={4} align="right"><Typography.Text strong>{formatClp(privateGross)}</Typography.Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={5} align="right"><Typography.Text strong>{formatClp(privateRetention)}</Typography.Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={6} align="right"><Typography.Text strong>{formatClp(privateNet)}</Typography.Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={7} align="right"><Typography.Text strong>{attentionCount}</Typography.Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={8} align="right">—</Table.Summary.Cell>
+                <Table.Summary.Cell index={9} align="right"><Typography.Text strong>{formatHoursFromMinutes(totalAttentionMinutes)} h</Typography.Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={10} align="right">—</Table.Summary.Cell>
               </Table.Summary.Row>
             </Table.Summary>}
           />
@@ -416,12 +413,12 @@ export function PrivateLiquidationsPage() {
           ? <pre style={{ maxHeight: '75vh', overflow: 'auto', whiteSpace: 'pre-wrap', margin: 0 }}>{emailSourceText}</pre>
           : <Spin />
         : previewPdfUrl
-        ? <iframe
-          title={`Vista previa de la liquidación ${previewLiquidation?.liquidationNumber ?? ''}`}
-          src={previewPdfUrl}
-          style={{ width: '100%', height: '75vh', border: 0 }}
-        />
-        : <Spin />}
+          ? <iframe
+            title={`Vista previa de la liquidación ${previewLiquidation?.liquidationNumber ?? ''}`}
+            src={previewPdfUrl}
+            style={{ width: '100%', height: '75vh', border: 0 }}
+          />
+          : <Spin />}
     </Modal>
 
     {canCreate && <Modal
@@ -432,14 +429,16 @@ export function PrivateLiquidationsPage() {
       cancelText="Cancelar"
       confirmLoading={busy}
       okText={preview ? 'Confirmar importación' : selectedImportInstitution === 'centro-cebien' ? 'Analizar correo' : 'Analizar PDF'}
-      okButtonProps={{ disabled: busy || (preview
-        ? (preview.sourceType === 'pdf'
-          ? !selectedFile
-          : !emailBody.trim() || cebienAccountingMonth === null)
-        : (minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1
-          || (selectedImportInstitution === 'sanatorio-aleman' && (!selectedFile || !profileRut))
-          || (selectedImportInstitution === 'centro-cebien' && (!emailBody.trim() || cebienAccountingMonth === null))
-          || selectedImportInstitution === null)) }}
+      okButtonProps={{
+        disabled: busy || (preview
+          ? (preview.sourceType === 'pdf'
+            ? !selectedFile
+            : !emailBody.trim() || cebienAccountingMonth === null)
+          : (minutesPerAttention === null || !Number.isInteger(minutesPerAttention) || minutesPerAttention < 1
+            || (selectedImportInstitution === 'sanatorio-aleman' && (!selectedFile || !profileRut))
+            || (selectedImportInstitution === 'centro-cebien' && (!emailBody.trim() || cebienAccountingMonth === null))
+            || selectedImportInstitution === null))
+      }}
       cancelButtonProps={{ disabled: busy }}
       closable={!busy}
       mask={{ closable: !busy }}
@@ -449,27 +448,64 @@ export function PrivateLiquidationsPage() {
     >
       {importError && <Alert type="error" showIcon title={importError} closable={{ onClose: () => setImportError(null) }} style={{ marginBottom: 16 }} />}
       <Form layout="vertical" requiredMark={false}>
-        <Form.Item label="Institución privada" required>
-          <Select
-            value={selectedImportInstitution ?? undefined}
-            placeholder="Selecciona una institución"
-            disabled={busy}
-            onChange={value => {
-              setSelectedImportInstitution(value)
-              setSelectedFile(null)
-              setUploadFileList([])
-              setEmailBody('')
-              setCebienAccountingMonth(null)
-              setMinutesPerAttention(null)
-              setPreview(null)
-              setImportError(null)
-            }}
-            options={[
-              { value: 'sanatorio-aleman', label: 'Sanatorio Alemán' },
-              { value: 'centro-cebien', label: 'Centro Cebien' },
-            ]}
-          />
-        </Form.Item>
+        <Row gutter={[16, 0]} align="bottom">
+          <Col xs={24} md={8}>
+            <Form.Item label="Institución Privada" required>
+              <Select
+                value={selectedImportInstitution ?? undefined}
+                placeholder="Selecciona una institución"
+                disabled={busy}
+                onChange={value => {
+                  setSelectedImportInstitution(value)
+                  setSelectedFile(null)
+                  setUploadFileList([])
+                  setEmailBody('')
+                  setCebienAccountingMonth(null)
+                  setMinutesPerAttention(null)
+                  setPreview(null)
+                  setImportError(null)
+                }}
+                options={[
+                  { value: 'sanatorio-aleman', label: 'Sanatorio Alemán' },
+                  { value: 'centro-cebien', label: 'Centro Cebien' },
+                ]}
+              />
+            </Form.Item>
+          </Col>
+          {selectedImportInstitution === 'centro-cebien' && <Col xs={24} md={8}>
+            <Form.Item label="Mes de Pago" required>
+              <DatePicker
+                picker="month"
+                value={cebienAccountingMonth}
+                onChange={value => { setCebienAccountingMonth(value?.date(1) ?? null); setPreview(null); setImportError(null) }}
+                format={(value: Dayjs) => monthLabel(value.year(), value.month() + 1)}
+                placeholder="Selecciona el mes de Pago"
+                disabled={busy}
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
+          </Col>}
+          {selectedImportInstitution !== null && <Col xs={24} md={8}>
+            <Form.Item label="Tiempo de atención" required>
+              <Space.Compact style={{ width: '100%' }}>
+                <InputNumber
+                  min={1}
+                  step={1}
+                  precision={0}
+                  value={minutesPerAttention ?? undefined}
+                  onChange={value => {
+                    setMinutesPerAttention(typeof value === 'number' && Number.isInteger(value) ? value : null)
+                    setPreview(null)
+                    setImportError(null)
+                  }}
+                  style={{ width: 'calc(100% - 56px)' }}
+                  disabled={busy}
+                />
+                <Space.Addon>min</Space.Addon>
+              </Space.Compact>
+            </Form.Item>
+          </Col>}
+        </Row>
 
         {selectedImportInstitution === 'sanatorio-aleman' && <>
           {!profileRut && <Alert
@@ -480,81 +516,49 @@ export function PrivateLiquidationsPage() {
             style={{ marginBottom: 16 }}
           />}
           <Form.Item label="Archivo PDF" required>
-          <Upload.Dragger
-            accept="application/pdf,.pdf"
-            maxCount={1}
-            fileList={uploadFileList}
-            beforeUpload={file => {
-              if (file.size > MAX_PDF_BYTES) {
-                setSelectedFile(null)
-                setUploadFileList([])
-                setPreview(null)
-                setImportError('El PDF no puede superar 1 MB.')
-                return Upload.LIST_IGNORE
-              }
-              setImportError(null)
-              setSelectedFile(file)
-              setPreview(null)
-              setUploadFileList([{ uid: file.uid, name: file.name, status: 'done', originFileObj: file }])
-              return false
-            }}
-            onRemove={() => {
-              setSelectedFile(null)
-              setPreview(null)
-              setUploadFileList([])
-              setImportError(null)
-              return true
-            }}
-            disabled={busy || !profileRut}
-            multiple={false}
-          >
-            <p className="ant-upload-drag-icon"><FilePdfOutlined /></p>
-            <p className="ant-upload-text">Selecciona o arrastra la liquidación</p>
-            <p className="ant-upload-hint">PDF de Sanatorio Alemán · Máximo 1 MB</p>
-          </Upload.Dragger>
-          </Form.Item>
-        </>}
-
-        {selectedImportInstitution === 'centro-cebien' && <>
-          <Form.Item label="Cuerpo del correo de Centro Cebien" required>
-            <Input.TextArea
-              value={emailBody}
-              onChange={event => { setEmailBody(event.target.value); setPreview(null); setImportError(null) }}
-              autoSize={{ minRows: 8, maxRows: 16 }}
-              disabled={busy}
-              placeholder="Pega aquí el cuerpo del correo enviado por Centro Cebien."
-            />
-          </Form.Item>
-          <Form.Item label="Mes contable" required>
-            <DatePicker
-              picker="month"
-              value={cebienAccountingMonth}
-              onChange={value => { setCebienAccountingMonth(value?.date(1) ?? null); setPreview(null); setImportError(null) }}
-              format={(value: Dayjs) => monthLabel(value.year(), value.month() + 1)}
-              placeholder="Selecciona el mes contable"
-              disabled={busy}
-              style={{ width: '100%' }}
-            />
-          </Form.Item>
-        </>}
-
-        {selectedImportInstitution !== null && <Form.Item label="Minutos enteros por atención" required>
-          <Space.Compact style={{ width: '100%' }}>
-            <InputNumber
-              min={1}
-              step={1}
-              precision={0}
-              value={minutesPerAttention ?? undefined}
-              onChange={value => {
-                setMinutesPerAttention(typeof value === 'number' && Number.isInteger(value) ? value : null)
-                setPreview(null)
+            <Upload.Dragger
+              accept="application/pdf,.pdf"
+              maxCount={1}
+              fileList={uploadFileList}
+              beforeUpload={file => {
+                if (file.size > MAX_PDF_BYTES) {
+                  setSelectedFile(null)
+                  setUploadFileList([])
+                  setPreview(null)
+                  setImportError('El PDF no puede superar 1 MB.')
+                  return Upload.LIST_IGNORE
+                }
                 setImportError(null)
+                setSelectedFile(file)
+                setPreview(null)
+                setUploadFileList([{ uid: file.uid, name: file.name, status: 'done', originFileObj: file }])
+                return false
               }}
-              style={{ width: 'calc(100% - 56px)' }}
-              disabled={busy}
-            />
-            <Space.Addon>min</Space.Addon>
-          </Space.Compact>
+              onRemove={() => {
+                setSelectedFile(null)
+                setPreview(null)
+                setUploadFileList([])
+                setImportError(null)
+                return true
+              }}
+              disabled={busy || !profileRut}
+              multiple={false}
+            >
+              <p className="ant-upload-drag-icon"><FilePdfOutlined /></p>
+              <p className="ant-upload-text">Selecciona o arrastra la liquidación</p>
+              <p className="ant-upload-hint">PDF de Sanatorio Alemán · Máximo 1 MB</p>
+            </Upload.Dragger>
+          </Form.Item>
+        </>}
+
+        {selectedImportInstitution === 'centro-cebien' && <Form.Item label="Cuerpo del correo de Centro Cebien" required>
+          <Input.TextArea
+            value={emailBody}
+            onChange={event => { setEmailBody(event.target.value); setPreview(null); setImportError(null) }}
+            autoSize={{ minRows: 8, maxRows: 16 }}
+            disabled={busy}
+            placeholder="Pega aquí el cuerpo del correo enviado por Centro Cebien."
+          />
         </Form.Item>}
       </Form>
       {preview && <>

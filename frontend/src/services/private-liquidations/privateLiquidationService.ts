@@ -1,5 +1,5 @@
 import { apiClient } from '../apiClient'
-import type { PrivateLiquidation, PrivateLiquidationPreview } from '../../types/api'
+import type { PrivateLiquidation, PrivateLiquidationListItem, PrivateLiquidationPreview } from '../../types/api'
 
 function toFormData(file: File, minutesPerAttention: number): FormData {
   const form = new FormData()
@@ -47,7 +47,7 @@ export const privateLiquidationService = {
   },
 
   async list(params: { year?: number; month?: number; professionalId?: string }) {
-    return (await apiClient.get<PrivateLiquidation[]>('/private-liquidations', { params })).data
+    return (await apiClient.get<PrivateLiquidationListItem[]>('/private-liquidations', { params })).data
   },
 
   async download(id: string) {

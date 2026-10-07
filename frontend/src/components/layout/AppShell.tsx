@@ -12,9 +12,9 @@ export function AppShell() {
   const items = useMemo(() => {
     const entries = [
       { key: '/dashboard', label: 'Dashboard', permission: PermissionCodes.dashboardRead },
-      { key: '/month', label: 'Mes de trabajo', permission: PermissionCodes.periodsRead },
-      { key: '/private-liquidations', label: 'Liquidaciones privadas', permission: PermissionCodes.privateLiquidationsRead },
-      { key: '/institutions', label: 'Instituciones y tarifas', permission: PermissionCodes.relationshipsRead },
+      { key: '/month', label: 'Trabajo por Horas', permission: PermissionCodes.periodsRead },
+      { key: '/private-liquidations', label: 'Trabajo por Paciente', permission: PermissionCodes.privateLiquidationsRead },
+      { key: '/institutions', label: 'Instituciones y Tarifas por Hora', permission: PermissionCodes.relationshipsRead },
       { key: '/settings', label: 'Configuración', permission: PermissionCodes.retentionRead },
       { key: '/admin/users', label: 'Cuentas', permission: PermissionCodes.usersRead },
       { key: '/admin/institutions', label: 'Catálogo público', permission: PermissionCodes.institutionsManage },

@@ -166,7 +166,7 @@ public sealed class PrivateLiquidationApplicationService(
         return ToDto(liquidation, prepared.Payer, prepared.PrivateInstitutionName, period.AppliedRetentionPercentage);
     }
 
-    public async Task<IReadOnlyList<PrivateLiquidationDto>> ListAsync(
+    public async Task<IReadOnlyList<PrivateLiquidationListItemDto>> ListAsync(
         ActorContext actor, Guid? professionalId, short? year, short? month, CancellationToken cancellationToken)
     {
         if (month is < 1 or > 12 || year is < 1900)
@@ -186,14 +186,13 @@ public sealed class PrivateLiquidationApplicationService(
         return await query.OrderByDescending(x => x.Liquidation.AccountingYear)
             .ThenByDescending(x => x.Liquidation.AccountingMonth)
             .ThenByDescending(x => x.Liquidation.LiquidationDate)
-            .Select(x => new PrivateLiquidationDto(
+            .Select(x => new PrivateLiquidationListItemDto(
                 x.Liquidation.Id,
                 x.Institution.Name,
                 x.Payer.Id,
                 x.Payer.LegalName,
                 x.Payer.Rut,
                 ToSourceCode(x.Liquidation.SourceType),
-                x.Liquidation.CollectorRut,
                 x.Liquidation.ReportedProfessionalName,
                 x.Liquidation.LiquidationNumber,
                 x.Liquidation.LiquidationDate,
@@ -201,16 +200,12 @@ public sealed class PrivateLiquidationApplicationService(
                 x.Liquidation.ServiceMonth,
                 x.Liquidation.AccountingYear,
                 x.Liquidation.AccountingMonth,
-                x.Liquidation.Fortnight,
                 x.Liquidation.PaymentService,
-                x.Liquidation.ExecutorName,
-                x.Liquidation.ServiceTotalClp,
                 x.Period.AppliedRetentionPercentage,
                 x.Liquidation.GrossTotalClp,
                 x.Liquidation.RetentionTotalClp,
                 x.Liquidation.NetTotalClp,
                 x.Liquidation.AttentionCount,
-                x.Liquidation.ReportedAttentionCount,
                 x.Liquidation.MinutesPerAttention,
                 x.Liquidation.TotalAttentionMinutes,
                 x.Liquidation.ImportedAt))

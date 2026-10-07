@@ -17,7 +17,7 @@ public interface IPrivateLiquidationApplicationService
     Task<PrivateLiquidationDto> ImportCebienEmailAsync(
         ActorContext actor, string emailBody, short accountingYear, short accountingMonth, int minutesPerAttention,
         string expectedSha256, decimal expectedRetentionPercentage, CancellationToken cancellationToken);
-    Task<IReadOnlyList<PrivateLiquidationDto>> ListAsync(
+    Task<IReadOnlyList<PrivateLiquidationListItemDto>> ListAsync(
         ActorContext actor, Guid? professionalId, short? year, short? month, CancellationToken cancellationToken);
     Task<PrivateLiquidationFile> DownloadAsync(ActorContext actor, Guid liquidationId, CancellationToken cancellationToken);
     Task<string> ReadEmailSourceAsync(ActorContext actor, Guid liquidationId, CancellationToken cancellationToken);
