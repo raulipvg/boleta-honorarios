@@ -142,8 +142,10 @@ export interface PrivateLiquidationPreview {
   collectorRut: string
   liquidationNumber: string
   liquidationDate: string
-  year: number
-  month: number
+  serviceYear: number
+  serviceMonth: number
+  accountingYear: number
+  accountingMonth: number
   fortnight: number
   paymentService: string
   executorName: string
@@ -169,8 +171,10 @@ export interface PrivateLiquidation {
   collectorRut: string
   liquidationNumber: string
   liquidationDate: string
-  year: number
-  month: number
+  serviceYear: number
+  serviceMonth: number
+  accountingYear: number
+  accountingMonth: number
   fortnight: number
   paymentService: string
   executorName: string

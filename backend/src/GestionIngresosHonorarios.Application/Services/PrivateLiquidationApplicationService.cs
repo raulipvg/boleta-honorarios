@@ -52,8 +52,8 @@ public sealed class PrivateLiquidationApplicationService(
         try
         {
             await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-            var period = await GetOrCreatePeriodAsync(prepared.ProfessionalId, prepared.Parsed.Year,
-                prepared.Parsed.Month, cancellationToken);
+            var period = await GetOrCreatePeriodAsync(prepared.ProfessionalId, prepared.AccountingYear,
+                prepared.AccountingMonth, cancellationToken);
             await LockPeriodAsync(period.Id, cancellationToken);
             if (period.AppliedRetentionPercentage != expectedRetentionPercentage)
                 throw AppError.Conflict("La tasa anual aplicada al período cambió después de la previsualización. Analiza nuevamente el PDF.");
@@ -65,6 +65,8 @@ public sealed class PrivateLiquidationApplicationService(
             var liquidation = new PrivateLiquidation(
                 period.Id,
                 prepared.ProfessionalId,
+                prepared.Parsed.ServiceYear,
+                prepared.Parsed.ServiceMonth,
                 period.Year,
                 period.Month,
                 prepared.Parsed.Fortnight,
@@ -125,12 +127,11 @@ public sealed class PrivateLiquidationApplicationService(
             where liquidation.ProfessionalId == ownerId
             select new { Liquidation = liquidation, Payer = payer, Institution = institution, Period = period };
 
-        if (year.HasValue) query = query.Where(x => x.Liquidation.Year == year.Value);
-        if (month.HasValue) query = query.Where(x => x.Liquidation.Month == month.Value);
+        if (year.HasValue) query = query.Where(x => x.Liquidation.AccountingYear == year.Value);
+        if (month.HasValue) query = query.Where(x => x.Liquidation.AccountingMonth == month.Value);
 
-        return await query.OrderByDescending(x => x.Liquidation.Year)
-            .ThenByDescending(x => x.Liquidation.Month)
-            .ThenByDescending(x => x.Liquidation.Fortnight)
+        return await query.OrderByDescending(x => x.Liquidation.AccountingYear)
+            .ThenByDescending(x => x.Liquidation.AccountingMonth)
             .ThenByDescending(x => x.Liquidation.LiquidationDate)
             .Select(x => new PrivateLiquidationDto(
                 x.Liquidation.Id,
@@ -141,8 +142,10 @@ public sealed class PrivateLiquidationApplicationService(
                 x.Liquidation.CollectorRut,
                 x.Liquidation.LiquidationNumber,
                 x.Liquidation.LiquidationDate,
-                x.Liquidation.Year,
-                x.Liquidation.Month,
+                x.Liquidation.ServiceYear,
+                x.Liquidation.ServiceMonth,
+                x.Liquidation.AccountingYear,
+                x.Liquidation.AccountingMonth,
                 x.Liquidation.Fortnight,
                 x.Liquidation.PaymentService,
                 x.Liquidation.ExecutorName,
@@ -276,18 +279,23 @@ public sealed class PrivateLiquidationApplicationService(
             x => x.PrivateInstitutionId == payer.PrivateInstitutionId && x.Code == RuleCode && x.Active, cancellationToken)
             ?? throw new InvalidOperationException("No está configurada la regla de liquidación de Sanatorio Alemán.");
 
+        if (parsed.LiquidationDate.Year < 1900)
+            throw AppError.BadRequest("El año de la fecha de liquidación no es válido.");
+        var accountingYear = checked((short)parsed.LiquidationDate.Year);
+        var accountingMonth = checked((short)parsed.LiquidationDate.Month);
+
         var period = await _db.MonthlyPeriods.AsNoTracking().SingleOrDefaultAsync(
-            x => x.ProfessionalId == professionalId && x.Year == parsed.Year && x.Month == parsed.Month, cancellationToken);
+            x => x.ProfessionalId == professionalId && x.Year == accountingYear && x.Month == accountingMonth, cancellationToken);
         var retentionPercentage = period?.AppliedRetentionPercentage
             ?? await _db.AnnualRetentionRates.AsNoTracking()
-                .Where(x => x.Year == parsed.Year)
+                .Where(x => x.Year == accountingYear)
                 .Select(x => (decimal?)x.Percentage)
                 .SingleOrDefaultAsync(cancellationToken)
-            ?? throw AppError.Conflict("No existe una tasa de retención configurada para el año de la liquidación.");
+            ?? throw AppError.Conflict("No existe una tasa de retención configurada para el año de la fecha de liquidación.");
         var totals = IncomeCalculator.CalculateFromGross(parsed.GrossTotalClp, retentionPercentage);
 
         return new PreparedLiquidation(
-            professionalId, parsed, payer, rule, retentionPercentage, totals,
+            professionalId, parsed, payer, rule, accountingYear, accountingMonth, retentionPercentage, totals,
             minutesPerAttention, pdfBytes, hash, originalFileName, fileSizeBytes);
     }
 
@@ -349,7 +357,8 @@ public sealed class PrivateLiquidationApplicationService(
         _db.PrivateLiquidations.AsNoTracking().AnyAsync(x => x.ProfessionalId == professionalId
             && (x.Sha256 == sha256
                 || (x.PayerEntityId == payerId && x.LiquidationNumber == parsed.LiquidationNumber
-                    && x.Year == parsed.Year && x.Month == parsed.Month && x.Fortnight == parsed.Fortnight)), cancellationToken);
+                    && x.ServiceYear == parsed.ServiceYear && x.ServiceMonth == parsed.ServiceMonth
+                    && x.Fortnight == parsed.Fortnight)), cancellationToken);
 
     private async Task<byte[]> ReadPdfBytesAsync(Stream source, CancellationToken cancellationToken)
     {
@@ -378,8 +387,10 @@ public sealed class PrivateLiquidationApplicationService(
         prepared.Parsed.CollectorRut,
         prepared.Parsed.LiquidationNumber,
         prepared.Parsed.LiquidationDate,
-        prepared.Parsed.Year,
-        prepared.Parsed.Month,
+        prepared.Parsed.ServiceYear,
+        prepared.Parsed.ServiceMonth,
+        prepared.AccountingYear,
+        prepared.AccountingMonth,
         prepared.Parsed.Fortnight,
         prepared.Parsed.PaymentService,
         prepared.Parsed.ExecutorName,
@@ -404,8 +415,10 @@ public sealed class PrivateLiquidationApplicationService(
         liquidation.CollectorRut,
         liquidation.LiquidationNumber,
         liquidation.LiquidationDate,
-        liquidation.Year,
-        liquidation.Month,
+        liquidation.ServiceYear,
+        liquidation.ServiceMonth,
+        liquidation.AccountingYear,
+        liquidation.AccountingMonth,
         liquidation.Fortnight,
         liquidation.PaymentService,
         liquidation.ExecutorName,
@@ -461,6 +474,8 @@ public sealed class PrivateLiquidationApplicationService(
         ParsedPrivateLiquidation Parsed,
         PrivatePayerEntity Payer,
         PrivatePaymentRule Rule,
+        short AccountingYear,
+        short AccountingMonth,
         decimal RetentionPercentage,
         GrossIncomeTotals Totals,
         int MinutesPerAttention,

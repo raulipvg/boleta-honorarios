@@ -150,9 +150,9 @@ export function PrivateLiquidationsPage() {
       message.destroy(loadingKey)
       setImportModalOpen(false)
       resetImportDraft()
-      if (imported.year !== year || imported.month !== month) {
+      if (imported.accountingYear !== year || imported.accountingMonth !== month) {
         setLoading(true)
-        setSelectedMonth(dayjs().year(imported.year).month(imported.month - 1).date(1))
+        setSelectedMonth(dayjs().year(imported.accountingYear).month(imported.accountingMonth - 1).date(1))
       } else {
         try {
           setLiquidations(await loadLiquidations())
@@ -376,7 +376,8 @@ export function PrivateLiquidationsPage() {
           <Tag color="green">RUT cobrador validado</Tag>
         </div>
         <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
-          <Descriptions.Item label="Período">{monthLabel(preview.year, preview.month)} · {preview.fortnight}.ª quincena</Descriptions.Item>
+          <Descriptions.Item label="Período del PDF">{monthLabel(preview.serviceYear, preview.serviceMonth)} · {preview.fortnight}.ª quincena</Descriptions.Item>
+          <Descriptions.Item label="Mes contable">{monthLabel(preview.accountingYear, preview.accountingMonth)}</Descriptions.Item>
           <Descriptions.Item label="N.º liquidación">{preview.liquidationNumber}</Descriptions.Item>
           <Descriptions.Item label="Fecha liquidación">{dayjs(preview.liquidationDate).format('DD-MM-YYYY')}</Descriptions.Item>
           <Descriptions.Item label="Entidad pagadora">{preview.payerLegalName} · RUT {preview.payerRut}</Descriptions.Item>

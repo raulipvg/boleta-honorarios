@@ -442,6 +442,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             {
                 table.HasCheckConstraint("ck_liquidaciones_privadas_anio", "anio BETWEEN 1900 AND 32767");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_mes", "mes BETWEEN 1 AND 12");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_anio_contable", "anio_contable BETWEEN 1900 AND 32767");
+                table.HasCheckConstraint("ck_liquidaciones_privadas_mes_contable", "mes_contable BETWEEN 1 AND 12");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_quincena", "quincena IN (1, 2)");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_importes_no_negativos", "bruto_total_clp >= 0 AND retencion_total_clp >= 0 AND liquido_total_clp >= 0 AND (total_servicio_clp IS NULL OR total_servicio_clp >= 0)");
                 table.HasCheckConstraint("ck_liquidaciones_privadas_liquido_consistente", "retencion_total_clp <= bruto_total_clp AND liquido_total_clp = bruto_total_clp - retencion_total_clp");
@@ -455,8 +457,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
             entity.Property(x => x.PeriodId).HasColumnName("periodo_id");
             entity.Property(x => x.ProfessionalId).HasColumnName("profesional_id");
-            entity.Property(x => x.Year).HasColumnName("anio");
-            entity.Property(x => x.Month).HasColumnName("mes");
+            entity.Property(x => x.ServiceYear).HasColumnName("anio");
+            entity.Property(x => x.ServiceMonth).HasColumnName("mes");
+            entity.Property(x => x.AccountingYear).HasColumnName("anio_contable");
+            entity.Property(x => x.AccountingMonth).HasColumnName("mes_contable");
             entity.Property(x => x.Fortnight).HasColumnName("quincena");
             entity.Property(x => x.PrivateInstitutionId).HasColumnName("institucion_privada_id");
             entity.Property(x => x.PayerEntityId).HasColumnName("entidad_pagadora_id");
@@ -480,11 +484,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.FileSizeBytes).HasColumnName("tamano_archivo_bytes");
             entity.Property(x => x.ImportedAt).HasColumnName("importada_at").HasDefaultValueSql("now()");
             entity.HasIndex(x => new { x.ProfessionalId, x.Sha256 }).IsUnique();
-            entity.HasIndex(x => new { x.ProfessionalId, x.PayerEntityId, x.LiquidationNumber, x.Year, x.Month, x.Fortnight }).IsUnique();
-            entity.HasIndex(x => new { x.ProfessionalId, x.Year, x.Month });
+            entity.HasIndex(x => new { x.ProfessionalId, x.PayerEntityId, x.LiquidationNumber, x.ServiceYear, x.ServiceMonth, x.Fortnight }).IsUnique();
+            entity.HasIndex(x => new { x.ProfessionalId, x.AccountingYear, x.AccountingMonth });
             entity.HasOne<Professional>().WithMany().HasForeignKey(x => x.ProfessionalId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<MonthlyPeriod>().WithMany()
-                .HasForeignKey(x => new { x.PeriodId, x.ProfessionalId, x.Year, x.Month })
+                .HasForeignKey(x => new { x.PeriodId, x.ProfessionalId, x.AccountingYear, x.AccountingMonth })
                 .HasPrincipalKey(x => new { x.Id, x.ProfessionalId, x.Year, x.Month }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<PrivatePayerEntity>().WithMany()
                 .HasForeignKey(x => new { x.PayerEntityId, x.PrivateInstitutionId })

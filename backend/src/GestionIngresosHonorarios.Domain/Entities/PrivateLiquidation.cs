@@ -9,8 +9,10 @@ public sealed class PrivateLiquidation
     public Guid Id { get; private set; }
     public Guid PeriodId { get; private set; }
     public Guid ProfessionalId { get; private set; }
-    public short Year { get; private set; }
-    public short Month { get; private set; }
+    public short ServiceYear { get; private set; }
+    public short ServiceMonth { get; private set; }
+    public short AccountingYear { get; private set; }
+    public short AccountingMonth { get; private set; }
     public short Fortnight { get; private set; }
     public Guid PrivateInstitutionId { get; private set; }
     public Guid PayerEntityId { get; private set; }
@@ -37,8 +39,10 @@ public sealed class PrivateLiquidation
     public PrivateLiquidation(
         Guid periodId,
         Guid professionalId,
-        short year,
-        short month,
+        short serviceYear,
+        short serviceMonth,
+        short accountingYear,
+        short accountingMonth,
         short fortnight,
         Guid privateInstitutionId,
         Guid payerEntityId,
@@ -63,8 +67,10 @@ public sealed class PrivateLiquidation
         if (periodId == Guid.Empty || professionalId == Guid.Empty || privateInstitutionId == Guid.Empty
             || payerEntityId == Guid.Empty || paymentRuleId == Guid.Empty)
             throw new ArgumentException("La liquidación debe estar asociada a período, profesional, institución, pagador y regla.");
-        if (year < 1900) throw new ArgumentOutOfRangeException(nameof(year));
-        if (month is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(month));
+        if (serviceYear < 1900) throw new ArgumentOutOfRangeException(nameof(serviceYear));
+        if (serviceMonth is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(serviceMonth));
+        if (accountingYear < 1900) throw new ArgumentOutOfRangeException(nameof(accountingYear));
+        if (accountingMonth is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(accountingMonth));
         if (fortnight is < 1 or > 2) throw new ArgumentOutOfRangeException(nameof(fortnight));
         if (string.IsNullOrWhiteSpace(liquidationNumber) || liquidationNumber.Trim().Length > 50)
             throw new ArgumentException("El número de liquidación es obligatorio.", nameof(liquidationNumber));
@@ -95,8 +101,10 @@ public sealed class PrivateLiquidation
 
         PeriodId = periodId;
         ProfessionalId = professionalId;
-        Year = year;
-        Month = month;
+        ServiceYear = serviceYear;
+        ServiceMonth = serviceMonth;
+        AccountingYear = accountingYear;
+        AccountingMonth = accountingMonth;
         Fortnight = fortnight;
         PrivateInstitutionId = privateInstitutionId;
         PayerEntityId = payerEntityId;

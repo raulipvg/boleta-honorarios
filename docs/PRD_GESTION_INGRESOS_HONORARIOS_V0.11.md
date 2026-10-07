@@ -98,7 +98,7 @@ Regla asociada a una institución y a un formato de liquidación. La primera reg
 
 ### 5.6 Liquidación privada
 
-Registro asociado a un PDF, un profesional, una entidad pagadora y un período mensual. Guarda el PDF original y los datos extraídos o ingresados para ese documento. El RUT del cobrador extraído se valida contra el perfil profesional. Solo se crea el registro confirmado después de superar todas las validaciones; un PDF rechazado no deja un registro pendiente ni guarda el original.
+Registro asociado a un PDF, un profesional, una entidad pagadora y un período mensual contable. Conserva por separado el período de servicio impreso en el PDF y el período contable definido por las reglas de la institución. Guarda el PDF original y los datos extraídos o ingresados para ese documento. El RUT del cobrador extraído se valida contra el perfil profesional. Solo se crea el registro confirmado después de superar todas las validaciones; un PDF rechazado no deja un registro pendiente ni guarda el original.
 
 ### 5.7 Atención
 
@@ -134,11 +134,11 @@ Retención privada del PDF =
 Líquido privado del PDF = Bruto privado del PDF − Retención privada del PDF
 ```
 
-- Se usa la tasa global anual vigente para el año del período, igual que en el modelo actual.
+- Para Sanatorio Alemán, el período contable corresponde al año/mes de `Fecha Liquidación`; se usa la tasa global anual vigente para ese año contable.
 - La retención se calcula y redondea **por PDF**, no después de sumar las liquidaciones del mes.
 - Se utiliza el redondeo *midpoint away from zero* (`AwayFromZero`).
 - El período conserva la tasa aplicada como snapshot, de modo que las liquidaciones históricas no cambien si posteriormente se corrige la tasa global.
-- Si no existe una tasa configurada para el año de la liquidación, el sistema no puede confirmar el cálculo de líquido y debe informar que falta la configuración.
+- Si no existe una tasa configurada para el año de la fecha de liquidación, el sistema no puede confirmar el cálculo de líquido y debe informar que falta la configuración.
 
 ### 6.3 Atenciones y tiempo
 
@@ -179,13 +179,14 @@ El importador procesa la plantilla “Liquidación por Participaciones” y obti
 - Entidad pagadora, razón social y RUT.
 - Cobrador y su RUT.
 - Número y fecha de liquidación.
-- Período del servicio, año, mes y quincena. La fecha de liquidación no reemplaza al período del servicio para la consolidación mensual.
+- Período del servicio, año, mes y quincena, conservados tal como aparecen en el PDF.
+- Período contable, año y mes, determinados por `Fecha Liquidación` y usados para asociar la liquidación al workspace mensual y al dashboard.
 - Servicio de pago y ejecutor.
 - Total del servicio, cuando aparece, y total de la liquidación.
 - Cantidad de atenciones contadas desde las filas identificadas por un N.º de atención válido.
 - Cantidad de cancelaciones indicada en el cierre, si aparece, para contrastarla con el conteo de filas.
 
-El profesional ingresa los minutos enteros por atención durante la carga. El valor debe ser mayor que cero y se aplica uniformemente a todas las atenciones del PDF.
+El período del PDF y el mes contable se presentan por separado en la previsualización. El profesional ingresa los minutos enteros por atención durante la carga. El valor debe ser mayor que cero y se aplica uniformemente a todas las atenciones del PDF.
 
 El tamaño máximo del archivo cargado es 1 MB (1.048.576 bytes). Los PDF que superen ese límite se rechazan antes de procesarse.
 
@@ -197,7 +198,7 @@ Por cada PDF, el sistema conserva:
 
 - El PDF original asociado a su liquidación.
 - RUT del cobrador leído del documento y resultado de su comparación con el perfil.
-- Número y fecha de liquidación, período/quincena, servicio, ejecutor, entidad pagadora y RUT.
+- Número y fecha de liquidación, período de servicio/quincena, período contable, servicio, ejecutor, entidad pagadora y RUT.
 - Total del servicio, si aparece, y `Total Liquidación` como monto bruto autoritativo.
 - El bruto, la tasa aplicada, la retención y el líquido calculados.
 - La cantidad de atenciones, la cantidad informada en el PDF cuando existe, los minutos por atención y los minutos totales calculados.
@@ -218,8 +219,8 @@ Antes de confirmar una liquidación, el sistema:
 - Reconoce el RUT pagador mediante el catálogo de pagadores permitidos de Sanatorio Alemán. Un RUT desconocido rechaza la importación; no crea una institución ni guarda una carga pendiente. El pagador se agrega mediante migración/seed y luego se vuelve a cargar el PDF.
 - Compara la cantidad de filas con el conteo indicado en el cierre del PDF, cuando está disponible.
 - Usa `Total Liquidación` como bruto oficial; compara el valor con la suma de `Valor Pago`. Si aparecen uno o más subtotales `Total Servicio`, suma los subtotales y compara el resultado con `Total Liquidación`.
-- Bloquea tanto un hash ya importado como una clave de negocio duplicada basada en profesional, RUT pagador, número de liquidación y año/mes/quincena del período.
-- Presenta los valores interpretados y los minutos ingresados antes de confirmar. Los campos extraídos no se editan manualmente; el tiempo por atención es el único dato del análisis ingresado por el usuario.
+- Bloquea tanto un hash ya importado como una clave de negocio duplicada basada en profesional, RUT pagador, número de liquidación y año/mes/quincena del período de servicio del PDF.
+- Presenta los valores interpretados, el período del PDF, el período contable y los minutos ingresados antes de confirmar. Los campos extraídos no se editan manualmente; el tiempo por atención es el único dato del análisis ingresado por el usuario.
 
 Si el PDF no se puede interpretar, no contiene texto extraíble, el RUT cobrador no coincide, el pagador no está reconocido o el conteo/suma no coincide con los valores de cierre, el sistema informa el problema y no confirma la importación. No se ejecuta OCR ni se permite corregir manualmente el conteo o los importes; el profesional debe resolver la fuente y volver a cargarla. Si ya existe una carga conflictiva, el profesional puede eliminarla y luego importar el PDF corregido.
 
@@ -252,7 +253,7 @@ Profesional
 - **Regla privada:** código y versión del formato o regla de liquidación.
 - **Liquidación privada:** una fila por PDF, vinculada al período mensual, institución, pagador y regla.
 
-La liquidación privada guarda, como mínimo, el RUT del cobrador extraído, el número y fecha de liquidación, el período/quincena, el servicio, la entidad pagadora, el total bruto, la retención y el líquido por PDF, el número de atenciones, los minutos por atención, los minutos totales y la referencia al PDF original. La tasa aplicada se toma del snapshot del período mensual; no se mantiene una tasa distinta por documento.
+La liquidación privada guarda, como mínimo, el RUT del cobrador extraído, el número y fecha de liquidación, el período de servicio/quincena, el período contable, el servicio, la entidad pagadora, el total bruto, la retención y el líquido por PDF, el número de atenciones, los minutos por atención, los minutos totales y la referencia al PDF original. La tasa aplicada se toma del snapshot del período contable; no se mantiene una tasa distinta por documento.
 
 ### Extensión del período mensual
 
@@ -272,7 +273,7 @@ Los agregados privados del período son la suma de sus liquidaciones confirmadas
 
 El workspace público mantiene el comportamiento actual: el profesional selecciona instituciones participantes y edita horas libremente.
 
-El período mensual puede además contener liquidaciones privadas importadas. Cada liquidación privada permanece vinculada a su documento, pagador y quincena. Una liquidación privada no crea registros de horas ni tarifas horarias. Las métricas de atenciones y duración corresponden únicamente a las instituciones privadas; no se combinan con las horas públicas.
+El período mensual puede además contener liquidaciones privadas importadas. En Sanatorio Alemán, las liquidaciones se vinculan al mes contable derivado de `Fecha Liquidación`, conservando la quincena y el período de servicio impresos en el PDF. Una liquidación privada no crea registros de horas ni tarifas horarias. Las métricas de atenciones y duración corresponden únicamente a las instituciones privadas; no se combinan con las horas públicas.
 
 La confirmación de una liquidación y la actualización de sus agregados privados deben ocurrir en una sola transacción. La eliminación por el profesional propietario borra el registro y el PDF, y actualiza los agregados del mes en una sola operación. El total mensual que muestra el servidor es autoritativo.
 
@@ -327,9 +328,9 @@ Un mes sin información de ninguna modalidad aparece como un período sin datos.
 - **RF-05:** Extraer número, fecha, período, quincena, servicio, totales y cantidad de filas de atención.
 - **RF-06:** Permitir ingresar los minutos por atención para cada PDF.
 - **RF-07:** Tratar `Total Liquidación` como bruto y calcular retención y líquido por PDF.
-- **RF-08:** Usar la tasa anual global del período y conservar el snapshot aplicado.
+- **RF-08:** Usar para Sanatorio Alemán la tasa anual global del año de `Fecha Liquidación` y conservar el snapshot aplicado.
 - **RF-09:** Rechazar o señalar errores de interpretación y cargas duplicadas.
-- **RF-10:** Actualizar los agregados privados mensuales junto con la liquidación importada.
+- **RF-10:** Actualizar los agregados privados del mes contable derivado de `Fecha Liquidación` junto con la liquidación importada.
 - **RF-11:** Mostrar en el dashboard mensual una columna de líquido por institución con datos y un líquido combinado, sin columnas agrupadas por modalidad.
 - **RF-12:** Validar propiedad y permisos en backend para cada lectura y escritura.
 - **RF-13:** Incorporar el RUT al perfil profesional, validarlo y normalizarlo; exigirlo antes de permitir la importación de PDF.
@@ -339,7 +340,7 @@ Un mes sin información de ninguna modalidad aparece como un período sin datos.
 - **RF-17:** Identificar filas válidas de atención mediante su N.º de atención; contar esas filas y sumar sus valores `Valor Pago` para validar el bruto leído.
 - **RF-18:** Tratar `Total Liquidación` como el bruto autoritativo y compararlo con la suma de `Valor Pago` y con `Total Servicio` o sus subtotales cuando existan. Una discrepancia bloquea la confirmación.
 - **RF-19:** Reconocer Sanatorio Alemán por los RUT pagadores configurados. Un RUT desconocido rechaza la importación; no se crea una institución ni se guarda una carga pendiente. El pagador se agrega mediante migración/seed y luego se vuelve a cargar el PDF.
-- **RF-20:** Detectar duplicados por hash y por clave de negocio (profesional, RUT pagador, número de liquidación y año/mes/quincena). Un conflicto bloquea la nueva carga hasta que el propietario elimine la anterior.
+- **RF-20:** Detectar duplicados por hash y por clave de negocio basada en período de servicio (profesional, RUT pagador, número de liquidación y año/mes/quincena del PDF). El listado y sus filtros usan el período contable. Un conflicto bloquea la nueva carga hasta que el propietario elimine la anterior.
 - **RF-21:** Permitir que solo el profesional propietario elimine su liquidación; borrar el archivo original y los datos asociados y actualizar los agregados mensuales transaccionalmente.
 - **RF-22:** Permitir descargar el PDF solo al profesional propietario y a administradores autorizados, mediante validación de rol y propiedad en backend.
 - **RF-23:** Mostrar Sanatorio Alemán como una sola columna que suma sus pagadores y mapear los alias públicos acordados a sus etiquetas canónicas.
@@ -348,6 +349,7 @@ Un mes sin información de ninguna modalidad aparece como un período sin datos.
 - **RF-26:** Aplicar la misma regla de lectura y cálculo a todos los servicios presentes en la plantilla de Sanatorio Alemán.
 - **RF-27:** Mostrar atenciones y minutos por PDF y como total mensual, sin calcular ni mostrar duración promedio.
 - **RF-28:** Presentar la selección del PDF, los minutos por atención y la previsualización dentro de un modal antes de confirmar la importación.
+- **RF-29:** Para Sanatorio Alemán, conservar el período de servicio del PDF y asignar las nuevas importaciones al período contable de su fecha de liquidación.
 
 ## 13. Criterios de aceptación
 
@@ -376,7 +378,7 @@ La retención se redondea para cada PDF antes de consolidar el mes.
 
 ### CA-05 — Consolidar el mes
 
-Para los dos documentos anteriores, el resumen privado de septiembre contiene:
+Si las fechas de liquidación de los dos documentos anteriores pertenecen al mismo mes contable, el resumen privado de ese mes contiene:
 
 - Bruto: $690.448.
 - Retención: $105.294.
@@ -422,7 +424,7 @@ Los RUT pagadores `76389986-1` y `88611600-4` se clasifican bajo Sanatorio Alem�
 
 ### CA-15 — Bloquear duplicados y corregir una carga
 
-El sistema bloquea el mismo hash y también una coincidencia de profesional, RUT pagador, número de liquidación y año/mes/quincena. Para corregir un PDF ya confirmado, el profesional propietario lo elimina y luego importa la versión correcta.
+El sistema bloquea el mismo hash y también una coincidencia de profesional, RUT pagador, número de liquidación y año/mes/quincena del período de servicio impreso en el PDF. Los filtros de liquidaciones consultan el mes contable. Para corregir un PDF ya confirmado, el profesional propietario lo elimina y luego importa la versión correcta.
 
 ### CA-16 — Eliminar liquidación
 
@@ -464,6 +466,16 @@ El `Líquido combinado` mensual suma los líquidos de todas las instituciones de
 
 El botón **Nueva liquidación** abre un modal que contiene la selección del PDF, los minutos por atención y la previsualización. Mientras se analiza o importa, se muestra el estado de carga y no se puede cerrar el modal. Cancelar limpia el borrador; un error conserva el modal abierto y muestra su detalle; una importación correcta cierra el modal y actualiza el período.
 
+### CA-26 — Separar período de servicio y período contable
+
+Para una liquidación cuyo período de servicio sea septiembre de 2026 y cuya fecha de liquidación sea 06-10-2026, la previsualización muestra **Período del PDF: septiembre de 2026** y **Mes contable: octubre de 2026**. Al confirmar, el bruto, la retención, el líquido y las métricas de atenciones se agregan a octubre en el workspace mensual y el dashboard. El período de servicio y la quincena originales permanecen disponibles en el detalle.
+
+Las liquidaciones que ya estaban importadas antes de este cambio conservan su mes contable actual. La migración no las reubica; la regla por fecha se aplica a importaciones nuevas.
+
+### CA-27 — Usar el año de la fecha de liquidación
+
+Si el período de servicio pertenece a 2026 y la fecha de liquidación es de enero de 2027, el sistema contabiliza la liquidación en enero de 2027 y aplica la tasa anual de 2027, conservando el snapshot calculado por PDF.
+
 ## 14. Reglas de negocio
 
 - **RN-01:** El cálculo público se mantiene basado en horas enteras y tarifas horarias por institución/año.
@@ -473,7 +485,7 @@ El botón **Nueva liquidación** abre un modal que contiene la selección del PD
 - **RN-05:** Una liquidación privada pertenece a un profesional y a un período mensual.
 - **RN-06:** El `Total Liquidación` del PDF es el bruto del profesional.
 - **RN-07:** El `Factor Pago` ya está reflejado en `Valor Pago`; no se vuelve a aplicar al total del PDF.
-- **RN-08:** La retención privada se calcula por documento usando la tasa global anual correspondiente.
+- **RN-08:** Para Sanatorio Alemán, la retención privada se calcula por documento usando la tasa global anual del año de la fecha de liquidación.
 - **RN-09:** La retención privada se redondea por PDF con `AwayFromZero`; el líquido es bruto menos retención.
 - **RN-10:** La cantidad de atenciones corresponde al conteo de filas del documento, no al número de personas únicas.
 - **RN-11:** Los minutos por atención se ingresan por PDF y se aplican a todas sus atenciones.
@@ -488,7 +500,7 @@ El botón **Nueva liquidación** abre un modal que contiene la selección del PD
 - **RN-20:** `Total Liquidación` es el bruto autoritativo. La suma de `Valor Pago` y los subtotales disponibles se usan para validar, no para sustituir silenciosamente el total del PDF.
 - **RN-21:** Si la validación del conteo, importes, RUT o formato falla, la importación no se confirma y sus campos extraídos no pueden corregirse manualmente.
 - **RN-22:** Los RUT pagadores reconocidos se asocian a Sanatorio Alemán. Un RUT desconocido se rechaza; el RUT se agrega mediante migración/seed antes de volver a cargar el PDF.
-- **RN-23:** Una liquidación se considera duplicada por hash o por coincidencia de profesional, RUT pagador, número de liquidación y año/mes/quincena del período.
+- **RN-23:** Una liquidación se considera duplicada por hash o por coincidencia de profesional, RUT pagador, número de liquidación y año/mes/quincena del período de servicio impreso en el PDF. Los filtros mensuales y la consolidación usan el período contable.
 - **RN-24:** Solo el profesional propietario puede eliminar una liquidación. La eliminación borra el PDF y sus datos, y actualiza los agregados del mes.
 - **RN-25:** El profesional propietario y los administradores autorizados pueden descargar el PDF mediante una ruta protegida en backend.
 - **RN-26:** Atenciones y duración son métricas privadas; no se combinan ni se equiparan con las horas registradas para instituciones públicas.
@@ -500,6 +512,7 @@ El botón **Nueva liquidación** abre un modal que contiene la selección del PD
 - **RN-32:** El dashboard omite instituciones con líquido cero en todos los meses del intervalo solicitado.
 - **RN-33:** Los alias públicos acordados se agrupan y se presentan con sus etiquetas canónicas.
 - **RN-34:** Los filtros de instituciones no alteran el líquido combinado mensual, que siempre suma todas las instituciones.
+- **RN-35:** Para las liquidaciones privadas de Sanatorio Alemán, `Fecha Liquidación` determina el período contable y su año; el período de servicio y quincena del PDF se conservan como datos de origen. Las reglas contables de otras instituciones privadas se definirán por separado.
 
 ## 15. Decisiones pendientes
 

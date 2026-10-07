@@ -73,6 +73,10 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
             "first.pdf", 12, CancellationToken.None);
         Assert.Equal(12, firstPreview.MinutesPerAttention);
         Assert.Equal(516L, firstPreview.TotalAttentionMinutes);
+        Assert.Equal((short)2026, firstPreview.ServiceYear);
+        Assert.Equal((short)9, firstPreview.ServiceMonth);
+        Assert.Equal((short)2026, firstPreview.AccountingYear);
+        Assert.Equal((short)10, firstPreview.AccountingMonth);
         Assert.Equal(94_091, firstPreview.RetentionTotalClp);
         Assert.Equal(522_897, firstPreview.NetTotalClp);
         Assert.Empty(files.Files);
@@ -80,6 +84,8 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         var first = await service.ImportAsync(actor, new MemoryStream(firstFile), firstFile.Length,
             "first.pdf", 12, firstPreview.Sha256, firstPreview.AppliedRetentionPercentage, CancellationToken.None);
         Assert.Equal(43, first.ReportedAttentionCount);
+        Assert.Equal((short)9, first.ServiceMonth);
+        Assert.Equal((short)10, first.AccountingMonth);
 
         var correctedAnnualRate = await db.AnnualRetentionRates.SingleAsync(x => x.Year == 2026);
         correctedAnnualRate.Percentage = 18m;
@@ -98,12 +104,14 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         Assert.Equal(2, await db.PrivateLiquidations.CountAsync());
         Assert.Equal(2, files.Files.Count);
 
-        var period = await db.MonthlyPeriods.SingleAsync(x => x.ProfessionalId == ProfessionalId && x.Year == 2026 && x.Month == 9);
+        var period = await db.MonthlyPeriods.SingleAsync(x => x.ProfessionalId == ProfessionalId && x.Year == 2026 && x.Month == 10);
         Assert.Equal(690_448, period.PrivateGrossTotalClp);
         Assert.Equal(105_294, period.PrivateRetentionTotalClp);
         Assert.Equal(585_154, period.PrivateNetTotalClp);
         Assert.Equal(47, period.PrivateAttentionCount);
         Assert.Equal(596L, period.PrivateAttentionMinutes);
+        Assert.Equal(2, (await service.ListAsync(actor, null, 2026, 10, CancellationToken.None)).Count);
+        Assert.Empty(await service.ListAsync(actor, null, 2026, 9, CancellationToken.None));
 
         var administrator = new ActorContext(Guid.NewGuid(), null, IsAdministrator: true, IsProfessional: false);
         var downloaded = await service.DownloadAsync(administrator, first.Id, CancellationToken.None);
@@ -144,7 +152,9 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
 
         var dashboard = await income.GetDashboardAsync(actor, null, 2026, 2026, null, CancellationToken.None);
         var dashboardMonth = Assert.Single(dashboard.Months, x => x.Month == 9);
-        Assert.Equal(588_543, dashboardMonth.TotalNetClp);
+        Assert.Equal(3_280, dashboardMonth.TotalNetClp);
+        var privateDashboardMonth = Assert.Single(dashboard.Months, x => x.Month == 10);
+        Assert.Equal(585_154, privateDashboardMonth.TotalNetClp);
         Assert.Equal(3, dashboard.Institutions.Count);
         Assert.Contains(dashboard.Institutions, x => x.Type == "public" && x.Name == "SAPU Lorenzo Arenas");
         Assert.Contains(dashboard.Institutions, x => x.Type == "public" && x.Name == "SAR TUCAPEL");
@@ -152,14 +162,16 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         Assert.DoesNotContain(dashboard.Institutions, x => x.Name == "Hospital sin ingresos");
         var sanatorioColumn = dashboard.Institutions.Single(x => x.Type == "private");
         var institutionValues = dashboardMonth.Institutions.ToDictionary(x => x.InstitutionKey, x => x.NetTotalClp);
-        Assert.Equal(1_694, institutionValues["public:alias:sapu-lorenzo-arenas"]);
-        Assert.Equal(1_695, institutionValues["public:alias:sar-tucapel"]);
-        Assert.Equal(585_154, institutionValues[sanatorioColumn.Key]);
+        Assert.Equal(1_640, institutionValues["public:alias:sapu-lorenzo-arenas"]);
+        Assert.Equal(1_640, institutionValues["public:alias:sar-tucapel"]);
+        var octoberInstitutionValues = privateDashboardMonth.Institutions.ToDictionary(x => x.InstitutionKey, x => x.NetTotalClp);
+        Assert.Equal(0, octoberInstitutionValues["public:alias:sapu-lorenzo-arenas"]);
+        Assert.Equal(585_154, octoberInstitutionValues[sanatorioColumn.Key]);
 
         var filteredDashboard = await income.GetDashboardAsync(actor, null, 2026, 2026,
             [sanatorioColumn.Key], CancellationToken.None);
         Assert.Equal(sanatorioColumn.Key, Assert.Single(filteredDashboard.Institutions).Key);
-        Assert.Equal(588_543, Assert.Single(filteredDashboard.Months, x => x.Month == 9).TotalNetClp);
+        Assert.Equal(585_154, Assert.Single(filteredDashboard.Months, x => x.Month == 10).TotalNetClp);
 
         var duplicate = await Assert.ThrowsAsync<AppError>(() =>
             service.PreviewAsync(actor, new MemoryStream(firstFile), firstFile.Length, "first.pdf", 12, CancellationToken.None));
@@ -186,7 +198,11 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         Assert.Equal(2, await db.PrivateLiquidations.CountAsync());
         Assert.Equal(690_448, period.PrivateGrossTotalClp);
         Assert.Equal(47, period.PrivateAttentionCount);
-        Assert.Equal(3_389, period.NetTotalClp);
+        Assert.Equal(0, period.NetTotalClp);
+        Assert.Equal(585_154, period.PrivateNetTotalClp);
+        var publicPeriod = await db.MonthlyPeriods.SingleAsync(
+            x => x.ProfessionalId == ProfessionalId && x.Year == 2026 && x.Month == 9);
+        Assert.Equal(3_280, publicPeriod.NetTotalClp);
     }
 
     [Fact]
@@ -228,6 +244,91 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UsesLiquidationDateYearForAccountingPeriodAndRetention()
+    {
+        await using var db = CreateContext();
+        db.AnnualRetentionRates.Add(new AnnualRetentionRate { Year = 2027, Percentage = 16m });
+        await db.SaveChangesAsync();
+
+        var files = new MemoryPrivateLiquidationStorage();
+        var parser = new SamplePrivateLiquidationParser(
+            liquidationDate: new DateOnly(2027, 1, 6), serviceYear: 2026, serviceMonth: 12);
+        var service = CreateService(db, files, parser);
+        var actor = new ActorContext(UserId, ProfessionalId, IsAdministrator: false, IsProfessional: true);
+        var bytes = Encoding.ASCII.GetBytes("%PDF-1.7\nFIRST-SAMPLE-CROSS-YEAR");
+
+        var preview = await service.PreviewAsync(actor, new MemoryStream(bytes), bytes.Length,
+            "cross-year.pdf", 20, CancellationToken.None);
+
+        Assert.Equal((short)2026, preview.ServiceYear);
+        Assert.Equal((short)12, preview.ServiceMonth);
+        Assert.Equal((short)2027, preview.AccountingYear);
+        Assert.Equal((short)1, preview.AccountingMonth);
+        Assert.Equal(16m, preview.AppliedRetentionPercentage);
+        Assert.Equal(98_718, preview.RetentionTotalClp);
+        Assert.Equal(518_270, preview.NetTotalClp);
+
+        var imported = await service.ImportAsync(actor, new MemoryStream(bytes), bytes.Length,
+            "cross-year.pdf", 20, preview.Sha256, preview.AppliedRetentionPercentage, CancellationToken.None);
+        Assert.Equal((short)2026, imported.ServiceYear);
+        Assert.Equal((short)12, imported.ServiceMonth);
+        Assert.Equal((short)2027, imported.AccountingYear);
+        Assert.Equal((short)1, imported.AccountingMonth);
+
+        var accountingPeriod = await db.MonthlyPeriods.SingleAsync(
+            x => x.ProfessionalId == ProfessionalId && x.Year == 2027 && x.Month == 1);
+        Assert.Equal(518_270, accountingPeriod.PrivateNetTotalClp);
+        Assert.Single(await service.ListAsync(actor, null, 2027, 1, CancellationToken.None));
+        Assert.Empty(await service.ListAsync(actor, null, 2026, 12, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AccountingPeriodMigrationPreservesExistingMonthlyAssignment()
+    {
+        await using var db = CreateContext();
+        var existingPeriod = new MonthlyPeriod(ProfessionalId, 2026, 9, 15.25m);
+        existingPeriod.UpdatePrivateTotals(10_000, 1_525, 8_475, 1, 20);
+        db.MonthlyPeriods.Add(existingPeriod);
+        await db.SaveChangesAsync();
+
+        var payer = await db.PrivatePayerEntities.SingleAsync(x => x.Rut == "76389986-1");
+        var rule = await db.PrivatePaymentRules.SingleAsync(x => x.Code == "SANATORIO_ALEMAN_PARTICIPACIONES");
+
+        await db.Database.MigrateAsync("20261007154020_PrivateLiquidationIntegerAttentionMinutes");
+        var liquidationId = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO liquidaciones_privadas (
+                id, periodo_id, profesional_id, anio, mes, quincena,
+                institucion_privada_id, entidad_pagadora_id, regla_pago_id,
+                rut_cobrador, numero_liquidacion, fecha_liquidacion, servicio_pago, ejecutor,
+                total_servicio_clp, bruto_total_clp, retencion_total_clp, liquido_total_clp,
+                atenciones, atenciones_reportadas_pdf, minutos_por_atencion, minutos_totales,
+                sha256, storage_key, nombre_archivo, tamano_archivo_bytes
+            ) VALUES (
+                {liquidationId}, {existingPeriod.Id}, {ProfessionalId}, 2026, 9, 2,
+                {payer.PrivateInstitutionId}, {payer.Id}, {rule.Id},
+                '19091616-2', 'HIST-1', DATE '2026-10-06', 'CONSULTAS MÉDICAS', 'EJECUTOR DE PRUEBA',
+                10000, 10000, 1525, 8475, 1, 1, 20, 20,
+                {new string('A', 64)}, 'historic.pdf', 'historic.pdf', 100
+            )
+            """);
+
+        await db.Database.MigrateAsync();
+        db.ChangeTracker.Clear();
+
+        var preservedLiquidation = await db.PrivateLiquidations.SingleAsync(x => x.Id == liquidationId);
+        Assert.Equal((short)2026, preservedLiquidation.ServiceYear);
+        Assert.Equal((short)9, preservedLiquidation.ServiceMonth);
+        Assert.Equal((short)2026, preservedLiquidation.AccountingYear);
+        Assert.Equal((short)9, preservedLiquidation.AccountingMonth);
+        Assert.Equal(existingPeriod.Id, preservedLiquidation.PeriodId);
+
+        var preservedPeriod = await db.MonthlyPeriods.SingleAsync(x => x.Id == existingPeriod.Id);
+        Assert.Equal(10_000, preservedPeriod.PrivateGrossTotalClp);
+        Assert.Equal(8_475, preservedPeriod.PrivateNetTotalClp);
+    }
+
+    [Fact]
     public async Task IntegerMinuteMigrationRejectsFractionalHistoricalValuesWithoutRounding()
     {
         await using var db = CreateContext();
@@ -256,7 +357,12 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
         .UseNpgsql(_postgres.GetConnectionString())
         .Options);
 
-    private sealed class SamplePrivateLiquidationParser(bool unknownPayer = false, string collectorRut = "19.091.616-2")
+    private sealed class SamplePrivateLiquidationParser(
+        bool unknownPayer = false,
+        string collectorRut = "19.091.616-2",
+        DateOnly? liquidationDate = null,
+        short serviceYear = 2026,
+        short serviceMonth = 9)
         : IPrivateLiquidationPdfParser
     {
         public async Task<ParsedPrivateLiquidation> ParseAsync(Stream pdf, CancellationToken cancellationToken)
@@ -269,9 +375,9 @@ public sealed class PrivateLiquidationWorkflowTests : IAsyncLifetime
                 unknownPayer ? "12345678-5" : isFirst ? "76389986-1" : "88611600-4",
                 collectorRut,
                 isFirst ? "220081" : "220080",
-                new DateOnly(2026, 9, 22),
-                2026,
-                9,
+                liquidationDate ?? new DateOnly(2026, 10, 6),
+                serviceYear,
+                serviceMonth,
                 1,
                 "CONSULTAS MÉDICAS",
                 "EJECUTOR DE PRUEBA",

@@ -19,7 +19,7 @@ public sealed class SanatorioAlemanLiquidationPdfParserTests
             Nro : 220081
             Rut cobrador : 19091616-2
             Cobrador : PROFESIONAL DE PRUEBA
-            Fecha Liquidacion : 22-09-2026
+            Fecha Liquidacion : 06-10-2026
             Servicio de pago : CONSULTAS MEDICAS
             Perido : 09-2026 / 1era. QUINCENA
             Ejecutor : PROFESIONAL DE PRUEBA
@@ -37,9 +37,9 @@ public sealed class SanatorioAlemanLiquidationPdfParserTests
         Assert.Equal("76389986-1", result.PayerRut);
         Assert.Equal("19091616-2", result.CollectorRut);
         Assert.Equal("220081", result.LiquidationNumber);
-        Assert.Equal(new DateOnly(2026, 9, 22), result.LiquidationDate);
-        Assert.Equal((short)2026, result.Year);
-        Assert.Equal((short)9, result.Month);
+        Assert.Equal(new DateOnly(2026, 10, 6), result.LiquidationDate);
+        Assert.Equal((short)2026, result.ServiceYear);
+        Assert.Equal((short)9, result.ServiceMonth);
         Assert.Equal((short)1, result.Fortnight);
         Assert.Equal("CONSULTAS MEDICAS", result.PaymentService);
         Assert.False(string.IsNullOrWhiteSpace(result.ExecutorName));

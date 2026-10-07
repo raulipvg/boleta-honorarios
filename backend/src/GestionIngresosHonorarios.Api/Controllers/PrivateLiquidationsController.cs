@@ -53,7 +53,7 @@ public sealed class PrivateLiquidationsController(
         var result = await liquidations.ImportAsync(
             await actors.GetAsync(User.GetSubjectId(), cancellationToken),
             stream, file.Length, file.FileName, minutesPerAttention, expectedSha256, expectedRetentionPercentage, cancellationToken);
-        return CreatedAtAction(nameof(List), new { year = result.Year, month = result.Month }, result);
+        return CreatedAtAction(nameof(List), new { year = result.AccountingYear, month = result.AccountingMonth }, result);
     }
 
     [HttpGet]
